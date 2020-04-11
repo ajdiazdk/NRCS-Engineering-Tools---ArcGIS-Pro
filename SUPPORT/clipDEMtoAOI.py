@@ -28,13 +28,23 @@
 
 ## ================================================================================================================
 def print_exception():
-    tb = sys.exc_info()[2]
-    l = traceback.format_tb(tb)
-    l.reverse()
-    tbinfo = "".join(l)
-    AddMsgAndPrint(" \n----------ERROR Start------------------- \n",2)
-    AddMsgAndPrint("Traceback Info:  \n" + tbinfo + "Error Info:  \n    " +  str(sys.exc_type)+ ": " + str(sys.exc_value) + "",2)
-    AddMsgAndPrint("----------ERROR End--------------------  \n",2)
+
+    try:
+
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        theMsg = "\t" + traceback.format_exception(exc_type, exc_value, exc_traceback)[1] + "\n\t" + traceback.format_exception(exc_type, exc_value, exc_traceback)[-1]
+
+        if theMsg.find("exit") > -1:
+            AddMsgAndPrint("\n\n")
+            pass
+        else:
+            AddMsgAndPrint("\n----------------------------------- ERROR Start -----------------------------------",2)
+            AddMsgAndPrint(theMsg,2)
+            AddMsgAndPrint("------------------------------------- ERROR End -----------------------------------\n",2)
+
+    except:
+        AddMsgAndPrint("Unhandled error in print_exception method", 2)
+        pass
 
 ## ================================================================================================================
 def AddMsgAndPrint(msg, severity=0):
@@ -84,105 +94,95 @@ def logBasicSettings():
 # Import system modules
 import arcpy, sys, os, traceback
 
-# Environment settings
-arcpy.env.overwriteOutput = True
-arcpy.env.geographicTransformations = "WGS_1984_(ITRF00)_To_NAD_1983"
-arcpy.env.resamplingMethod = "BILINEAR"
-arcpy.env.pyramid = "PYRAMIDS -1 BILINEAR DEFAULT 75 NO_SKIP"
-arcpy.env.parallelProcessingFactor = "75%"
+if __name__ == '__main__':
 
-### Version check
-##version = str(arcpy.GetInstallInfo()['Version'])
-##if version.find("10.") > 0:
-##    ArcGIS10 = True
-##else:
-##    ArcGIS10 = False
-#### Convert version string to a float value (needed for numeric comparison)
-##versionFlt = float(version[0:4])
-##if versionFlt < 10.5:
-##    arcpy.AddError("\nThis tool requires ArcGIS version 10.5 or greater. Exiting...\n")
-##    sys.exit()
+    try:
 
-# Main - wrap everything in a try statement
-try:
-    # Check out Spatial Analyst License
-    if arcpy.CheckExtension("Spatial") == "Available":
-        arcpy.CheckOutExtension("Spatial")
-    else:
-        arcpy.AddError("\nSpatial Analyst Extension not enabled. Please enable Spatial Analyst from the Tools/Extensions menu. Exiting...\n")
-        sys.exit()
+        # Check out Spatial Analyst License
+        if arcpy.CheckExtension("Spatial") == "Available":
+            arcpy.CheckOutExtension("Spatial")
+        else:
+            arcpy.AddError("\nSpatial Analyst Extension not enabled. Please enable Spatial Analyst from the Tools/Extensions menu. Exiting...\n")
+            sys.exit()
 
-    arcpy.SetProgressorLabel("Setting Variables")
-    # --------------------------------------------------------------------- Input Parameters
-    inputDEM = arcpy.GetParameterAsText(0)
-    inMask = arcpy.GetParameterAsText(1)
-    outputDEM = arcpy.GetParameterAsText(2)
+        arcpy.SetProgressorLabel("Setting Variables")
+        # --------------------------------------------------------------------- Input Parameters
+        inputDEM = arcpy.GetParameterAsText(0)
+        inMask = arcpy.GetParameterAsText(1)
+        outputDEM = arcpy.GetParameterAsText(2)
 
-    # --------------------------------------------------------------------- Directory Paths
-    userWorkspace = os.path.dirname(os.path.realpath(outputDEM))
-    demName = os.path.splitext(os.path.basename(outputDEM))[0]
+        # --------------------------------------------------------------------- Directory Paths
+        userWorkspace = os.path.dirname(os.path.realpath(outputDEM))
+        demName = os.path.splitext(os.path.basename(outputDEM))[0]
 
-    # log inputs and settings to file
-    textFilePath = userWorkspace + os.sep + os.path.basename(userWorkspace).replace(" ","_") + "_EngTools.txt"
-    logBasicSettings()
+        # Environment settings
+        arcpy.env.overwriteOutput = True
+        arcpy.env.geographicTransformations = "WGS_1984_(ITRF00)_To_NAD_1983"
+        arcpy.env.resamplingMethod = "BILINEAR"
+        arcpy.env.pyramid = "PYRAMIDS -1 BILINEAR DEFAULT 75 NO_SKIP"
+        arcpy.env.parallelProcessingFactor = "75%"
 
-    # --------------------------------------------------------------------- Basic Checks before processing
-    arcpy.SetProgressorLabel("Validating Inputs")
-    AddMsgAndPrint("\nValidating Inputs...",0)
+        # log inputs and settings to file
+        textFilePath = userWorkspace + os.sep + os.path.basename(userWorkspace).replace(" ","_") + "_EngTools.txt"
+        logBasicSettings()
 
-    # Exit if no AOI provided
-    if not int(arcpy.GetCount_management(inMask).getOutput(0)) > 0:
-        AddMsgAndPrint("\nNo area of interest was provided, you must digitize or select a mask. Exiting...",2)
-        sys.exit()
+        # --------------------------------------------------------------------- Basic Checks before processing
+        arcpy.SetProgressorLabel("Validating Inputs")
+        AddMsgAndPrint("\nValidating Inputs...",0)
 
-    # Exit if AOI contains more than 1 digitized area.
-    if int(arcpy.GetCount_management(inMask).getOutput(0)) > 1:
-        AddMsgAndPrint("\nYou can only digitize one Area of Interest or provide a single feature. Please try again. Exiting...",2)
-        sys.exit()
+        # Exit if no AOI provided
+        if not int(arcpy.GetCount_management(inMask).getOutput(0)) > 0:
+            AddMsgAndPrint("\nNo area of interest was provided, you must digitize or select a mask. Exiting...",2)
+            sys.exit()
 
-    # Exit if mask isn't a polygon
-    if arcpy.Describe(inMask).ShapeType != "Polygon":
-        AddMsgAndPrint("\nYour Area of Interest must be a polygon layer. Exiting...",2)
-        sys.exit()
+        # Exit if AOI contains more than 1 digitized area.
+        if int(arcpy.GetCount_management(inMask).getOutput(0)) > 1:
+            AddMsgAndPrint("\nYou can only digitize one Area of Interest or provide a single feature. Please try again. Exiting...",2)
+            sys.exit()
 
-    # --------------------------------------------------------------------- Gather DEM Info
-    arcpy.SetProgressorLabel("Gathering information about input DEM file")
-    AddMsgAndPrint("\nInformation about input DEM file " + os.path.basename(inputDEM)+ ":",0)
+        # Exit if mask isn't a polygon
+        if arcpy.Describe(inMask).ShapeType != "Polygon":
+            AddMsgAndPrint("\nYour Area of Interest must be a polygon layer. Exiting...",2)
+            sys.exit()
 
-    desc = arcpy.Describe(inputDEM)
-    sr = desc.SpatialReference
-    cellSize = desc.MeanCellWidth
-    units = sr.LinearUnitName
+        # --------------------------------------------------------------------- Gather DEM Info
+        arcpy.SetProgressorLabel("Gathering information about input DEM file")
+        AddMsgAndPrint("\nInformation about input DEM file " + os.path.basename(inputDEM)+ ":",0)
 
-    # Coordinate System must be a Projected type in order to continue.
-    if sr.Type == "Projected":
-        AddMsgAndPrint("\n\tInput Projection Name: " + sr.Name,0)
-        AddMsgAndPrint("\tXY Linear Units: " + units,0)
-        AddMsgAndPrint("\tCell Size: " + str(desc.MeanCellWidth) + " x " + str(desc.MeanCellHeight) + " " + units,0)
-    else:
-        AddMsgAndPrint("\n\n\t" + os.path.basename(inputDEM) + " is NOT in a Projected Coordinate System. Exiting...",2)
-        sys.exit(0)
+        desc = arcpy.Describe(inputDEM)
+        sr = desc.SpatialReference
+        cellSize = desc.MeanCellWidth
+        units = sr.LinearUnitName
 
-    # -------------------------------------------------------------------- Clip DEM to AOI
-    arcpy.SetProgressorLabel("Clipping DEM to Area of Interest")
-    AddMsgAndPrint("\nClipping DEM to Area of Interest...",0)
+        # Coordinate System must be a Projected type in order to continue.
+        if sr.Type == "Projected":
+            AddMsgAndPrint("\n\tInput Projection Name: " + sr.Name,0)
+            AddMsgAndPrint("\tXY Linear Units: " + units,0)
+            AddMsgAndPrint("\tCell Size: " + str(desc.MeanCellWidth) + " x " + str(desc.MeanCellHeight) + " " + units,0)
+        else:
+            AddMsgAndPrint("\n\n\t" + os.path.basename(inputDEM) + " is NOT in a Projected Coordinate System. Exiting...",2)
+            sys.exit(0)
 
-    arcpy.env.snapRaster = inputDEM
-    maskedDEM = arcpy.sa.ExtractByMask(inputDEM, inMask)
-    maskedDEM.save(outputDEM)
+        # -------------------------------------------------------------------- Clip DEM to AOI
+        arcpy.SetProgressorLabel("Clipping DEM to Area of Interest")
+        AddMsgAndPrint("\nClipping DEM to Area of Interest...",0)
 
-    AddMsgAndPrint("\n\tSuccessully Clipped " + os.path.basename(inputDEM) + " to Area of Interest!",0)
+        arcpy.env.snapRaster = inputDEM
+        maskedDEM = arcpy.sa.ExtractByMask(inputDEM, inMask)
+        maskedDEM.save(outputDEM)
 
-    # ------------------------------------------------------------------------------------------------ FIN!
-    AddMsgAndPrint("\nProcessing Complete!\n",0)
+        AddMsgAndPrint("\n\tSuccessully Clipped " + os.path.basename(inputDEM) + " to Area of Interest!",0)
 
-# -----------------------------------------------------------------------------------------------------------------
+        # ------------------------------------------------------------------------------------------------ FIN!
+        AddMsgAndPrint("\nProcessing Complete!\n",0)
 
-except SystemExit:
-    pass
+    # -----------------------------------------------------------------------------------------------------------------
 
-except KeyboardInterrupt:
-    AddMsgAndPrint("Interruption requested. Exiting...")
+    except SystemExit:
+        pass
 
-except:
-    print_exception()
+    except KeyboardInterrupt:
+        AddMsgAndPrint("Interruption requested. Exiting...")
+
+    except:
+        print_exception()
