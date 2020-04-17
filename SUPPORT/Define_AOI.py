@@ -37,6 +37,10 @@
 # - Added Snap Raster environment
 # - Added parallel processing factor environment
 # - swithced from sys.exit() to exit()
+# - All gp functions were translated to arcpy
+# - Every function including main is in a try/except clause
+# - Main code is wrapped in if __name__ == '__main__': even though script will never be
+#   used as independent library.
 # - Updated and Tested for ArcGIS Pro 2.4.2 and python 3.6
 
 #

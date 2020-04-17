@@ -1,24 +1,58 @@
-# Create_Watershed.py
-## ================================================================================================================ 
-def print_exception():
-    
-    tb = sys.exc_info()[2]
-    l = traceback.format_tb(tb)
-    l.reverse()
-    tbinfo = "".join(l)
-    AddMsgAndPrint("\n----------------------------------- ERROR Start -----------------------------------",2)
-    AddMsgAndPrint("Traceback Info:\n" + tbinfo + "Error Info:\n    " +  str(sys.exc_type)+ ": " + str(sys.exc_value) + "",2)
-    AddMsgAndPrint("------------------------------------- ERROR End -----------------------------------\n",2)
+# ==========================================================================================
+# Name: Create_Watershed.py
+#
+# Author: Peter Mead
+# e-mail: pemead@co.becker.mn.us
+#
+# Author: Chris Morse
+#         IN State GIS Coordinator
+#         USDA - NRCS
+# e-mail: chris.morse@usda.gov
+# phone: 317.501.1578
+#
+# Author: Adolfo.Diaz
+#         GIS Specialist
+#         National Soil Survey Center
+#         USDA - NRCS
+# e-mail: adolfo.diaz@usda.gov
+# phone: 608.662.4422 ext. 216
 
-## ================================================================================================================    
+# Created by Peter Mead, Adolfo Diaz, USDA NRCS, 2013
+# Updated by Chris Morse, USDA NRCS, 2019
+
+# ==========================================================================================
+# Updated  4/15/2020 - Adolfo Diaz
+
+# Create_Watershed.py
+## ===============================================================================================================
+def print_exception():
+
+    try:
+
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        theMsg = "\t" + traceback.format_exception(exc_type, exc_value, exc_traceback)[1] + "\n\t" + traceback.format_exception(exc_type, exc_value, exc_traceback)[-1]
+
+        if theMsg.find("exit") > -1:
+            AddMsgAndPrint("\n\n")
+            pass
+        else:
+            AddMsgAndPrint("\n----------------------------------- ERROR Start -----------------------------------",2)
+            AddMsgAndPrint(theMsg,2)
+            AddMsgAndPrint("------------------------------------- ERROR End -----------------------------------\n",2)
+
+    except:
+        AddMsgAndPrint("Unhandled error in print_exception method", 2)
+        pass
+
+## ================================================================================================================
 def AddMsgAndPrint(msg, severity=0):
     # prints message to screen if run as a python script
     # Adds tool message to the geoprocessor
-    # 
+    #
     # Split the message on \n first, so that if it's multiple lines, a GPMessage will be added for each line
-    
+
     print msg
-    
+
     try:
 
         f = open(textFilePath,'a+')
@@ -29,30 +63,30 @@ def AddMsgAndPrint(msg, severity=0):
 
         if ArcGIS10:
             if not msg.find("\n") < 0 and msg.find("\n") < 4:
-                gp.AddMessage(" ")        
-        
-        for string in msg.split('\n'):          
-            
+                gp.AddMessage(" ")
+
+        for string in msg.split('\n'):
+
             # Add a geoprocessing message (in case this is run as a tool)
             if severity == 0:
                 gp.AddMessage(string)
-                
+
             elif severity == 1:
                 gp.AddWarning(string)
-                
+
             elif severity == 2:
                 #gp.AddMessage("    ")
                 gp.AddError(string)
 
         if ArcGIS10:
             if msg.find("\n") > 4:
-                gp.AddMessage(" ")                
-                
+                gp.AddMessage(" ")
+
     except:
         pass
 
 ## ================================================================================================================
-def logBasicSettings():    
+def logBasicSettings():
     # record basic user inputs and settings to log file for future purposes
 
     import getpass, time
@@ -66,17 +100,17 @@ def logBasicSettings():
     f.write("User Parameters:\n")
     f.write("\tWorkspace: " + userWorkspace + "\n")
     f.write("\tStreams: " + streamsPath + "\n")
-    
+
     if int(gp.GetCount_management(outlet).getOutput(0)) > 0:
         f.write("\toutlet Digitized: " + str(gp.GetCount_management(outlet)) + "\n")
     else:
         f.write("\toutlet Digitized: 0\n")
     f.write("\tWatershed Name: " + watershedOut + "\n")
-    if calcLHL:    
+    if calcLHL:
         f.write("\tCreate flow paths: SELECTED\n")
     else:
         f.write("\tCreate flow paths: NOT SELECTED\n")
-        
+
     f.close
     del f
 
@@ -116,14 +150,14 @@ def determineOverlap(outletsLayer):
             if numOfIntersectedOutlets == 0:
 
                 AddMsgAndPrint("\tAll outlets are outside of your Area of Interest",2)
-                AddMsgAndPrint("\tRedigitize your outlets so that they are within your Area of Interest\n",2)  
-            
+                AddMsgAndPrint("\tRedigitize your outlets so that they are within your Area of Interest\n",2)
+
                 gp.delete_management("AOI_lyr")
                 gp.delete_management("outletsTempLyr")
                 del numOfOutlets
                 del numOfOutletsWithinAOI
                 del numOfIntersectedOutlets
-                
+
                 return False
 
             # There are some outlets on AOI boundary but at least one outlet completely outside AOI
@@ -131,13 +165,13 @@ def determineOverlap(outletsLayer):
 
                 # All outlets are intersecting the AOI boundary
                 if numOfOutlets == numOfIntersectedOutlets:
-                    
+
                     AddMsgAndPrint("\n\tAll Outlet(s) are intersecting the AOI Boundary",0)
                     AddMsgAndPrint("\tOutlets will be clipped to AOI",0)
 
                 # Some outlets intersecting AOI and some completely outside.
                 else:
-                    
+
                     AddMsgAndPrint("\n\tThere is " + str(numOfOutlets - numOfOutletsWithinAOI) + " outlet(s) completely outside the AOI Boundary",0)
                     AddMsgAndPrint("\tOutlet(s) will be clipped to AOI",0)
 
@@ -153,20 +187,20 @@ def determineOverlap(outletsLayer):
                 gp.delete_management(outletFC)
                 gp.rename(clippedOutlets,outletFC)
 
-                AddMsgAndPrint("\n\t" + str(int(gp.GetCount_management(outletFC).getOutput(0))) + " Outlet(s) will be used to create watershed(s)",0) 
-                
+                AddMsgAndPrint("\n\t" + str(int(gp.GetCount_management(outletFC).getOutput(0))) + " Outlet(s) will be used to create watershed(s)",0)
+
                 return True
-        
+
         # all outlets are completely within AOI; Ideal scenario
         elif numOfOutletsWithinAOI == numOfOutlets:
 
-            AddMsgAndPrint("\n\t" + str(numOfOutlets) + " Outlet(s) will be used to create watershed(s)",0)            
-            
+            AddMsgAndPrint("\n\t" + str(numOfOutlets) + " Outlet(s) will be used to create watershed(s)",0)
+
             gp.delete_management("AOI_lyr")
             gp.delete_management("outletsTempLyr")
             del numOfOutlets
-            del numOfOutletsWithinAOI            
-            
+            del numOfOutletsWithinAOI
+
             return True
 
         # combination of scenarios.  Would require multiple outlets to have been digitized. A
@@ -178,7 +212,7 @@ def determineOverlap(outletsLayer):
 
             numOfIntersectedOutlets = int((gp.GetCount_management("outletsTempLyr")).GetOutput(0))
 
-            AddMsgAndPrint("\t" + str(numOfOutlets) + " Outlets digitized",0)            
+            AddMsgAndPrint("\t" + str(numOfOutlets) + " Outlets digitized",0)
 
             # there are some outlets crossing the AOI boundary and some within.
             if numOfIntersectedOutlets > 0 and numOfOutletsWithinAOI > 0:
@@ -190,7 +224,7 @@ def determineOverlap(outletsLayer):
             elif numOfIntersectedOutlets == 0 and numOfOutletsWithinAOI > 0:
 
                 AddMsgAndPrint("\n\tThere is " + str(numOfOutlets - numOfOutletsWithinAOI) + " outlet(s) completely outside the AOI Boundary",0)
-                AddMsgAndPrint("\tOutlet(s) will be clipped to AOI",0)             
+                AddMsgAndPrint("\tOutlet(s) will be clipped to AOI",0)
 
             # All outlets are are intersecting the AOI boundary
             else:
@@ -203,13 +237,13 @@ def determineOverlap(outletsLayer):
             gp.delete_management("outletsTempLyr")
             del numOfOutlets
             del numOfOutletsWithinAOI
-            del numOfIntersectedOutlets            
+            del numOfIntersectedOutlets
 
             gp.delete_management(outletFC)
             gp.rename(clippedOutlets,outletFC)
 
-            AddMsgAndPrint("\n\t" + str(int(gp.GetCount_management(outletFC).getOutput(0))) + " Outlet(s) will be used to create watershed(s)",0)            
-            
+            AddMsgAndPrint("\n\t" + str(int(gp.GetCount_management(outletFC).getOutput(0))) + " Outlet(s) will be used to create watershed(s)",0)
+
             return True
 
     except:
@@ -256,17 +290,17 @@ for k in keys:
         else:
             ArcGIS10 = False
 
-        break 
+        break
 
 del d, keys
-   
+
 if version < 9.3:
     gp.AddError("\nThis tool requires ArcGIS version 9.3 or Greater.....EXITING",2)
     sys.exit("")
 
 
 try:
-    # Check out Spatial Analyst License        
+    # Check out Spatial Analyst License
     if gp.CheckExtension("spatial") == "Available":
         gp.CheckOutExtension("spatial")
     else:
@@ -278,7 +312,7 @@ try:
     outlet = gp.getparameterastext(1)
     userWtshdName = gp.getparameterastext(2)
     createFlowPaths = gp.getparameterastext(3)
-                   
+
     # Uncomment the following 4 lines to run from pythonWin
 ##    streams = r'C:\flex\flex_EngTools.gdb\Layers\Streams'
 ##    outlet = r'C:\flex\flex_EngTools.gdb\Layers\outlet'
@@ -289,7 +323,7 @@ try:
         calcLHL = False
     else:
         calcLHL = True
-        
+
     # --------------------------------------------------------------------------------------------- Define Variables
     streamsPath = gp.Describe(streams).CatalogPath
 
@@ -299,7 +333,7 @@ try:
         gp.AddError("\n\n" + streams + " is an invalid Stream Network Feature")
         gp.AddError("Run Watershed Delineation Tool #2. Create Stream Network\n\n")
         sys.exit("")
-    
+
     userWorkspace = os.path.dirname(watershedGDB_path)
     watershedGDB_name = os.path.basename(watershedGDB_path)
     watershedFD = watershedGDB_path + os.sep + "Layers"
@@ -338,7 +372,7 @@ try:
     wtshdDEMsmooth = watershedGDB_path + os.sep + "wtshdDEMsmooth"
     slopeGrid = watershedGDB_path + os.sep + "slopeGrid"
     slopeStats = watershedGDB_path + os.sep + "slopeStats"
-    
+
     # Features in Arcmap
     watershedOut = "" + os.path.basename(watershed) + ""
     outletOut = "" + os.path.basename(outletFC) + ""
@@ -350,11 +384,11 @@ try:
     logBasicSettings()
 
     # ---------------------------------------------------------------------------------------------- Check some parameters
-    # If validated name becomes different than userWtshdName notify the user        
+    # If validated name becomes different than userWtshdName notify the user
     if os.path.basename(watershed) != userWtshdName:
         AddMsgAndPrint("\nUser Watershed name: " + str(userWtshdName) + " is invalid or already exists in project geodatabase.",1)
         AddMsgAndPrint("\tRenamed output watershed to " + str(watershedOut),0)
-        
+
     # Make sure the FGDB and streams exists from step 1 and 2
     if not gp.exists(watershedGDB_path) or not gp.exists(streamsPath):
         AddMsgAndPrint("\nThe \"Streams\" Feature Class or the File Geodatabase from Step 1 was not found",2)
@@ -389,17 +423,17 @@ try:
             if x < 1:
                 AddMsgAndPrint("\nRemoving old datasets from FGDB: " + watershedGDB_name ,1)
                 x += 1
-                
+
             try:
                 gp.delete_management(dataset)
                 AddMsgAndPrint("\tDeleting....." + os.path.basename(dataset),0)
             except:
                 pass
-            
+
     del dataset
     del datasetsToRemove
     del x
-    
+
     # ----------------------------------------------------------------------------------------------- Create New Outlet
     # -------------------------------------------- Features reside on hard disk;
     #                                              No heads up digitizing was used.
@@ -408,13 +442,13 @@ try:
         # if paths between outlet and outletFC are NOT the same
         if not gp.Describe(outlet).CatalogPath == outletFC:
 
-            # delete the outlet feature class; new one will be created            
+            # delete the outlet feature class; new one will be created
             if gp.exists(outletFC):
                 gp.delete_management(outletFC)
                 gp.CopyFeatures_management(outlet, outletFC)
-                AddMsgAndPrint("\nSuccessfully Recreated " + str(outletOut) + " feature class from existing layer",1)                
-                
-            else:    
+                AddMsgAndPrint("\nSuccessfully Recreated " + str(outletOut) + " feature class from existing layer",1)
+
+            else:
                 gp.CopyFeatures_management(outlet, outletFC)
                 AddMsgAndPrint("\nSuccessfully Created " + str(outletOut) + " feature class from existing layer",1)
 
@@ -423,7 +457,7 @@ try:
             AddMsgAndPrint("\nUsing Existing " + str(outletOut) + " feature class",1)
 
     # -------------------------------------------- Features reside in Memory;
-    #                                              heads up digitizing was used.       
+    #                                              heads up digitizing was used.
     else:
 
         if gp.exists(outletFC):
@@ -451,14 +485,14 @@ try:
     tempSnapRaster = gp.SnapRaster
     tempCellSize = gp.CellSize
     tempCoordSys = gp.OutputCoordinateSystem
-    
+
     # ---------------------------------- Retrieve Raster Properties
     desc = gp.Describe(FlowDir)
     sr = desc.SpatialReference
 
     units = sr.LinearUnitName
     cellSize = desc.MeanCellWidth
-    
+
     if units == "Meter":
         units = "Meters"
     elif units == "Foot":
@@ -471,21 +505,21 @@ try:
     gp.mask = ""
     gp.SnapRaster = DEM_aoi
     gp.OutputCoordinateSystem = sr
-    
+
     del desc
     del sr
-        
+
     # --------------------------------------------------------------------- Convert outlet Line Feature to Raster Pour Point.
 
     # Add dummy field for buffer dissolve and raster conversion using OBJECTID (which becomes subbasin ID)
     gp.AddField_management(outletFC, "IDENT", "DOUBLE", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
     gp.CalculateField_management(outletFC, "IDENT", "[OBJECTID]", "VB", "")
-    
+
     # Buffer outlet features by  raster cell size
-    bufferDist = "" + str(cellSize) + " " + str(units) + ""    
+    bufferDist = "" + str(cellSize) + " " + str(units) + ""
     gp.Buffer_analysis(outletFC, outletBuffer, bufferDist, "FULL", "ROUND", "LIST", "IDENT")
 
-    # Convert bufferd outlet to raster pour points    
+    # Convert bufferd outlet to raster pour points
     gp.MakeFeatureLayer(outletBuffer,"outletBufferLyr")
     gp.PolygonToRaster_conversion("outletBufferLyr","IDENT",pourPointGrid,"MAXIMUM_AREA","NONE",cellSize)
 
@@ -493,20 +527,20 @@ try:
     gp.Delete_management(outletBuffer)
     gp.Delete_management("outletBufferLyr")
     gp.DeleteField_management(outletFC, "IDENT")
-    
+
     del bufferDist
     AddMsgAndPrint("\nDelineating Watershed(s)...",1)
-    
+
     # ------------------------------------------------------------------ Create Watershed Raster using the raster pour point
-    
+
     gp.Watershed_sa(FlowDir,pourPointGrid,watershedGrid,"VALUE")
-    
+
     # ------------------------------------------------------------------- Convert results to simplified polygon
     if ArcGIS10:
-        
+
         try:
             # --------------------------------------------- Convert to watershed grid to a polygon feature class
-            
+
             gp.RasterToPolygon_conversion(watershedGrid,watershedTemp,"SIMPLIFY","VALUE")
 
         except:
@@ -519,15 +553,15 @@ try:
             else:
                 AddMsgAndPrint("\n" + gp.GetMessages(2),2)
                 sys.exit()
-                
+
         # -------------------------------------------------  Dissolve watershedTemp by GRIDCODE or grid_code
         if len(gp.ListFields(watershedTemp,"GRIDCODE")) > 0:
             gp.Dissolve_management(watershedTemp, watershedDissolve, "GRIDCODE", "", "MULTI_PART", "DISSOLVE_LINES")
         else:
-            gp.Dissolve_management(watershedTemp, watershedDissolve, "grid_code", "", "MULTI_PART", "DISSOLVE_LINES")               
+            gp.Dissolve_management(watershedTemp, watershedDissolve, "grid_code", "", "MULTI_PART", "DISSOLVE_LINES")
 
     # Do the following for ArcGIS 9.3
-    else:                
+    else:
 
         try:
             # Convert to watershed grid to a polygon feature class
@@ -535,17 +569,17 @@ try:
 
         except:
             if gp.exists(watershedTemp):
-                
+
                 if int(gp.GetCount_management(watershedTemp).getOutput(0)) > 0:
                     AddMsgAndPrint("",1)
                 else:
                     AddMsgAndPrint("\n" + gp.GetMessages(2),2)
-                    sys.exit()                
+                    sys.exit()
             else:
                 AddMsgAndPrint("\n" + gp.GetMessages(2),2)
                 sys.exit()
 
-        # Dissolve watershedTemp by GRIDCODE or grid_code 
+        # Dissolve watershedTemp by GRIDCODE or grid_code
         if len(gp.ListFields(watershedTemp,"GRIDCODE")) > 0:
             gp.Dissolve_management(watershedTemp, watershedDissolve, "GRIDCODE", "", "MULTI_PART", "DISSOLVE_LINES")
         else:
@@ -555,14 +589,14 @@ try:
 
 
     # Copy Results to watershedFD
-    gp.CopyFeatures_management(watershedDissolve, watershed)    
+    gp.CopyFeatures_management(watershedDissolve, watershed)
     AddMsgAndPrint("\n\tSuccessfully Created " + str(int(gp.GetCount_management(watershed).getOutput(0))) + " Watershed(s) from " + str(outletOut),0)
 
     # Delete unwanted datasets
     if gp.exists(watershedTemp):
         gp.delete_management(watershedTemp)
-        
-    gp.Delete_management(watershedDissolve)    
+
+    gp.Delete_management(watershedDissolve)
     gp.delete_management(pourPointGrid)
     gp.delete_management(watershedGrid)
 
@@ -573,11 +607,11 @@ try:
     if len(gp.ListFields(watershed,"GRIDCODE")) > 0:
         gp.CalculateField_management(watershed, "Subbasin", "[GRIDCODE]", "VB", "")
         gp.DeleteField_management(watershed, "GRIDCODE")
-        
+
     else:
         gp.CalculateField_management(watershed, "Subbasin", "[grid_code]", "VB", "")
         gp.DeleteField_management(watershed, "grid_code")
-    
+
     # Add Acres Field in watershed and calculate them and notify the user
     displayAreaInfo = False
 
@@ -585,7 +619,7 @@ try:
         gp.AddField_management(watershed, "Acres", "DOUBLE", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
         gp.CalculateField_management(watershed, "Acres", "[Shape_Area]/4046.86", "VB", "")
         displayAreaInfo = True
-        
+
     elif units == "Feet":
         gp.AddField_management(watershed, "Acres", "DOUBLE", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
         gp.CalculateField_management(watershed, "Acres", "[Shape_Area]/43560", "VB", "")
@@ -610,40 +644,40 @@ try:
             LongpathTemp1 = watershedGDB_path + os.sep + "lpTemp1"
             LongpathTemp2 = watershedGDB_path + os.sep + "lpTemp2"
             LP_Smooth = watershedGDB_path + os.sep + "lpSmooth"
-            
+
             # ------------------------------------------- Permanent Datasets (..and yes, it took 13 other ones to get here)
             Flow_Length = watershedFD + os.sep + os.path.basename(watershed) + "_FlowPaths"
             FlowLengthName = os.path.basename(Flow_Length)
 
             # ------------------------------------------- Derive Longest flow path for each subbasin
             # Create Longest Path Feature Class
-            gp.CreateFeatureClass_management(watershedFD, FlowLengthName, "POLYLINE") 
+            gp.CreateFeatureClass_management(watershedFD, FlowLengthName, "POLYLINE")
             gp.AddField_management(Flow_Length, "Subbasin", "LONG", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
             gp.AddField_management(Flow_Length, "Reach", "LONG", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
             gp.AddField_management(Flow_Length, "Type", "TEXT", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
             gp.AddField_management(Flow_Length, "Length_ft", "DOUBLE", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
 
             AddMsgAndPrint("\nCalculating watershed flow path(s)...",1)
-            
+
             # -------------------------------------------- Raster Flow Length Analysis
             # Set mask to watershed to limit calculations
             gp.mask = watershed
-            
+
             # Calculate total upstream flow length on FlowDir grid
             gp.FlowLength_sa(FlowDir, UP_GRID, "UPSTREAM", "")
-            
+
             # Calculate total downsteam flow length on FlowDir grid
             gp.FlowLength_sa(FlowDir, DOWN_GRID, "DOWNSTREAM", "")
-            
+
             # Sum total upstream and downstream flow lengths
             gp.Plus_sa(UP_GRID, DOWN_GRID, PLUS_GRID)
-            
+
             # Get Maximum downstream flow length in each subbasin
             gp.ZonalStatistics_sa(watershed, "Subbasin", DOWN_GRID, MAX_GRID, "MAXIMUM", "DATA")
-            
+
             # Subtract tolerance from Maximum flow length -- where do you get tolerance from?
             gp.Minus_sa(MAX_GRID, "0.3", MINUS_GRID)
-            
+
             # Extract cells with positive difference to isolate longest flow path(s)
             gp.GreaterThan_sa(PLUS_GRID, MINUS_GRID, LONGPATH)
             gp.Con_sa(LONGPATH, LONGPATH, LP_Extract, "", "\"VALUE\" = 1")
@@ -651,39 +685,39 @@ try:
 ##            # -------------------------------------------- Convert to Polyline features
 ##            # Convert raster flow path to polyline (DOES NOT RUN IN ARCGIS 10.5.0 Base Install)
 ##            gp.RasterToPolyline_conversion(LP_Extract, LongpathTemp, "ZERO", "", "NO_SIMPLIFY", "VALUE")
-##            
+##
 ####################################################################################################################################
             # Try to use Stream to Feature process to convert the raster Con result to a line (DUE TO 10.5.0 BUG)
             LFP_StreamLink = watershedGDB_path + os.sep + "lfplink"
             gp.StreamLink_sa(LP_Extract, FlowDir, LFP_StreamLink)
             gp.StreamToFeature_sa(LFP_StreamLink, FlowDir, LongpathTemp, "NO_SIMPLIFY")
 ####################################################################################################################################
-            
+
             # Smooth and Dissolve results
             gp.SmoothLine_management(LongpathTemp, LP_Smooth, "PAEK", "100 Feet", "FIXED_CLOSED_ENDPOINT", "NO_CHECK")
 
             # Intersect with watershed to get subbasin ID
             gp.Intersect_analysis(LP_Smooth + "; " + watershed, LongpathTemp1, "ALL", "", "INPUT")
-            
+
             # Dissolve to create single lines for each subbasin
             gp.Dissolve_management(LongpathTemp1, LongpathTemp2, "Subbasin", "", "MULTI_PART", "DISSOLVE_LINES")
-            
+
             # Add Fields / attributes & calculate length in feet
             gp.AddField_management(LongpathTemp2, "Reach", "SHORT", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
             gp.CalculateField_management(LongpathTemp2, "Reach", "[OBJECTID]", "VB", "")
             gp.AddField_management(LongpathTemp2, "Type", "TEXT", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
             gp.CalculateField_management(LongpathTemp2, "Type", '"Natural Watercourse"', "VB", "")
             gp.AddField_management(LongpathTemp2, "Length_ft", "DOUBLE", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
-            
+
             if units == "Meters":
                 gp.CalculateField_management(LongpathTemp2, "Length_ft", "[shape_length] * 3.28084", "VB", "")
             else:
                 gp.CalculateField_management(LongpathTemp2, "Length_ft", "[shape_length]", "VB", "")
-                
+
             # Append Results to Flow Length FC
             gp.Append_management(LongpathTemp2, Flow_Length, "NO_TEST")
 
-            # Delete Intermediate Data            
+            # Delete Intermediate Data
             datasetsToRemove = (UP_GRID,DOWN_GRID,PLUS_GRID,MAX_GRID,MINUS_GRID,LONGPATH,LP_Extract,LongpathTemp,LongpathTemp1,LongpathTemp2,LP_Smooth, LFP_StreamLink)
 
             x = 0
@@ -693,16 +727,16 @@ try:
 
                     if x < 1:
                         x += 1
-                        
+
                     try:
                         gp.delete_management(dataset)
                     except:
                         pass
-                    
+
             del dataset
             del datasetsToRemove
             del x
-        
+
             # ---------------------------------------------------------------------------------------------- Set up Domains
             # Apply domains to watershed geodatabase and Flow Length fields to aid in user editing
             domainTables = True
@@ -712,7 +746,7 @@ try:
             # If support tables not present skip domains -- user is on their own.
             if not gp.Exists(ID_Table):
                 domainTables = False
-                
+
             if not gp.Exists(Reach_Table):
                 domainTables = False
 
@@ -759,63 +793,63 @@ try:
             del LP_Smooth
             del FlowLengthName
             del LFP_StreamLink
-            
+
         except:
             # If Calc LHL fails prompt user to delineate manually and continue...  ...capture error for reference
             AddMsgAndPrint("\nUnable to Calculate Flow Path(s) .. You will have to trace your stream network to create them manually.."+ gp.GetMessages(2),2)
             AddMsgAndPrint("\nContinuing....",1)
-            
+
     # ----------------------------------------------------------------------------------------------- Calculate Average Slope
     calcAvgSlope = False
 
-    # ----------------------------- Retrieve Z Units from AOI    
+    # ----------------------------- Retrieve Z Units from AOI
     if gp.exists(projectAOI):
-        
+
         rows = gp.searchcursor(projectAOI)
         row = rows.next()
         zUnits = row.Z_UNITS
-        
+
         del rows
         del row
-        
+
         # Assign proper Z factor
         if zUnits == "Meters":
-            
+
             if units == "Feet":
                 Zfactor = 3.28084
             if units == "Meters":
                 Zfactor = 1
 
         elif zUnits == "Feet":
-            
+
             if units == "Feet":
                 Zfactor = 1
             if units == "Meters":
-                Zfactor = 0.3048                  
-                
+                Zfactor = 0.3048
+
         elif zUnits == "Centimeters":
-            
+
             if units == "Feet":
                 Zfactor = 30.48
             if units == "Meters":
                 Zfactor = 0.01
 
-        # zUnits must be inches; no more choices                
+        # zUnits must be inches; no more choices
         else:
-            
+
             if units == "Feet":
                 Zfactor = 12
             if units == "Meters":
                 Zfactor = 39.3701
     else:
         Zfactor = 0 # trapped for below so if Project AOI not present slope isnt calculated
-        
+
     # --------------------------------------------------------------------------------------------------------
     if Zfactor > 0:
         AddMsgAndPrint("\nCalculating average slope...",1)
-        
+
         if gp.exists(DEMsmooth):
-            
+
             # Use smoothed DEM to calculate slope to remove exteraneous values
             gp.AddField_management(watershed, "Avg_Slope", "DOUBLE", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
 
@@ -830,7 +864,7 @@ try:
             gp.delete_management(slopeGrid)
 
         elif gp.exists(DEM_aoi):
-           
+
             # Run Focal Statistics on the DEM_aoi to remove exteraneous values
             gp.focalstatistics_sa(DEM_aoi, DEMsmooth,"RECTANGLE 3 3 CELL","MEAN","DATA")
 
@@ -844,17 +878,17 @@ try:
             # Delete unwanted rasters
             gp.delete_management(DEMsmooth)
             gp.delete_management(wtshdDEMsmooth)
-            gp.delete_management(slopeGrid)   
+            gp.delete_management(slopeGrid)
 
         else:
             AddMsgAndPrint("\nMissing DEMsmooth or DEM_aoi from FGDB. Could not Calculate Average Slope",2)
-            
+
     else:
         AddMsgAndPrint("\nMissing Project AOI from FGDB. Could not retrieve Z Factor to Calculate Average Slope",2)
 
     # -------------------------------------------------------------------------------------- Update Watershed FC with Average Slope
     if calcAvgSlope:
-        
+
         # go through each zonal Stat record and pull out the Mean value
         rows = gp.searchcursor(slopeStats)
         row = rows.next()
@@ -864,32 +898,32 @@ try:
         AddMsgAndPrint("\nCreate Watershed Results:",1)
         AddMsgAndPrint("\n===================================================",0)
         AddMsgAndPrint("\tUser Watershed: " + str(watershedOut),0)
-        
+
         while row:
             wtshdID = row.OBJECTID
 
             # zonal stats doesnt generate "Value" with the 9.3 geoprocessor
             if len(gp.ListFields(slopeStats,"Value")) > 0:
                 zonalValue = row.VALUE
-                
+
             else:
                 zonalValue = row.SUBBASIN
-                
+
             zonalMeanValue = row.MEAN
 
             whereclause = "Subbasin = " + str(zonalValue)
             wtshdRows = gp.UpdateCursor(watershed,whereclause)
-            wtshdRow = wtshdRows.next()           
+            wtshdRow = wtshdRows.next()
 
             # Pass the Mean value from the zonalStat table to the watershed FC.
             while wtshdRow:
-                
+
                 wtshdRow.Avg_Slope = zonalMeanValue
                 wtshdRows.UpdateRow(wtshdRow)
 
                 # Inform the user of Watershed Acres, area and avg. slope
                 if displayAreaInfo:
-                    
+
                     # Inform the user of Watershed Acres, area and avg. slope
                     AddMsgAndPrint("\n\tSubbasin: " + str(wtshdRow.OBJECTID),0)
                     AddMsgAndPrint("\t\tAcres: " + str(splitThousands(round(wtshdRow.Acres,2))),0)
@@ -898,10 +932,10 @@ try:
 
                 else:
                     AddMsgAndPrint("\tSubbasin " + str(wtshdRow.OBJECTID) + " Avg. Slope: " + str(zonalMeanValue) + "%",1)
-                                   
+
                 break
 
-            row = rows.next()        
+            row = rows.next()
 
             del wtshdID
             del zonalValue
@@ -914,14 +948,14 @@ try:
         del row
         AddMsgAndPrint("\n===================================================",0)
         gp.delete_management(slopeStats)
-        
+
     import time
     time.sleep(5)
-    
+
     # ------------------------------------------------------------------------------------------------ Compact FGDB
     try:
         gp.compact_management(watershedGDB_path)
-        AddMsgAndPrint("\nSuccessfully Compacted FGDB: " + os.path.basename(watershedGDB_path),1)    
+        AddMsgAndPrint("\nSuccessfully Compacted FGDB: " + os.path.basename(watershedGDB_path),1)
     except:
         pass
 
@@ -929,7 +963,7 @@ try:
     # Set paths for derived layers
     gp.SetParameterAsText(4, outletFC)
     gp.SetParameterAsText(5, watershed)
-    
+
     if calcLHL:
         gp.SetParameterAsText(6, Flow_Length)
         del Flow_Length
@@ -988,7 +1022,7 @@ try:
         del tempCoordSys
     except:
         pass
-    
+
 except SystemExit:
     pass
 
