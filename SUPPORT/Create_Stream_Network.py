@@ -300,13 +300,10 @@ if __name__ == '__main__':
         streams =watershedGDB_FDpath + os.sep + projectName + "_Streams"
         DEM_aoi = watershedGDB_path + os.sep + projectName + "_DEM"
         hydroDEM = watershedGDB_path + os.sep + "hydroDEM"
-        Fill_hydroDEM = watershedGDB_path + os.sep + "Fill_hydroDEM"
         FlowAccum = watershedGDB_path + os.sep + "flowAccumulation"
         FlowDir = watershedGDB_path + os.sep + "flowDirection"
 
         # ----------------------------- Temporary Datasets
-        culvertRaster = watershedGDB_path + os.sep + "culvertRaster"
-        conFlowAccum = watershedGDB_path + os.sep + "conFlowAccum"
         streamLink = watershedGDB_path + os.sep + "streamLink"
 
         # check if culverts exist.  This is only needed b/c the script may be executed manually
@@ -363,6 +360,28 @@ if __name__ == '__main__':
         arcpy.env.snapRaster = demPath
         arcpy.env.outputCoordinateSystem = demSR
 
+        ## ------------------------------------------------------------------------- Z-factor conversion Lookup table
+        # lookup dictionary to convert XY units to area.  Key = XY unit of DEM; Value = conversion factor to sq.meters
+        acreConversionDict = {'Meters':4046.8564224,'Meter':4046.8564224,'Foot':43560,'Foot_US':43560,'Feet':43560, 'Centimeter':40470000,'Inch':6273000}
+
+        # Assign Z-factor based on XY and Z units of DEM
+        # the following represents a matrix of possible z-Factors
+        # using different combination of xy and z units
+        # ----------------------------------------------------
+        #                      Z - Units
+        #                       Meter    Foot     Centimeter     Inch
+        #          Meter         1	    0.3048	    0.01	    0.0254
+        #  XY      Foot        3.28084	  1	      0.0328084	    0.083333
+        # Units    Centimeter   100	    30.48	     1	         2.54
+        #          Inch        39.3701	  12       0.393701	      1
+        # ---------------------------------------------------
+
+        unitLookUpDict = {'Meter':0,'Meters':0,'Foot':1,'Foot_US':1,'Feet':1,'Centimeter':2,'Centimeters':2,'Inch':3,'Inches':3}
+        zFactorList = [[1,0.3048,0.01,0.0254],
+                       [3.28084,1,0.0328084,0.083333],
+                       [100,30.48,1.0,2.54],
+                       [39.3701,12,0.393701,1.0]]
+
         # ------------------------------------------------------------------------------------------------------------------------ Incorporate Culverts into DEM
         reuseCulverts = False
         # Culverts will be incorporated into the DEM_aoi if at least 1 culvert is provided.
@@ -404,7 +423,6 @@ if __name__ == '__main__':
 
                 # ------------------------------------------------------------------- Buffer Culverts
                 if bCulvertIntersection:
-                    cellSize = demCellSize
 
                     # determine linear units to set buffer value to the equivalent of 1 pixel
                     if linearUnits in ('Meter','Meters'):
@@ -429,85 +447,58 @@ if __name__ == '__main__':
                     arcpy.CalculateField_management(culvertBuffered, "ZONE", expression, "PYTHON3")
 
                     # Get the minimum elevation value for each culvert
-                    outZonalStats = ZonalStatistics(culvertBuffered, "ZONE", DEM_aoi, "MINIMUM", "NODATA")
+                    culvertMinValue = ZonalStatistics(culvertBuffered, "ZONE", DEM_aoi, "MINIMUM", "NODATA")
                     AddMsgAndPrint("\nApplying the minimum Zonal DEM Value to the Culverts")
 
                     # Elevation cells that overlap the culverts will get the minimum elevation value
-                    mosaicList = DEM_aoi + ";" + outZonalStats
-                    arcpy.MosaicToNewRaster_management(mosaicList, watershedGDB_path, "hydroDEM", "#", "32_BIT_FLOAT", cellSize, "1", "LAST", "#")
-                    AddMsgAndPrint("\nFusing Culverts and " + os.path.basename(DEM_aoi) + " to create " + os.path.basename(hydroDEM),1)
+                    mosaicList = DEM_aoi + ";" + culvertMinValue
+                    arcpy.MosaicToNewRaster_management(mosaicList, watershedGDB_path, "hydroDEM", "#", "32_BIT_FLOAT", demCellSize, "1", "LAST", "#")
+                    AddMsgAndPrint("\nFusing Culverts and " + demName + " to create " + os.path.basename(hydroDEM))
 
-                    gp.Fill_sa(hydroDEM, Fill_hydroDEM)
-                    AddMsgAndPrint("\nSuccessfully filled sinks in " + os.path.basename(hydroDEM) + " to remove small imperfections",1)
+                    Fill_hydroDEM_ = Fill(hydroDEM)
 
                 # No Culverts will be used due to no overlap or determining overlap error.
                 else:
-                    cellSize = gp.Describe(DEM_aoi).MeanCellWidth
-                    gp.Fill_sa(DEM_aoi, Fill_hydroDEM)
-                    AddMsgAndPrint("\nSuccessfully filled sinks in " + os.path.basename(hydroDEM) + " to remove small imperfections",1)
-
-                del proceed
-
-            # No culverts were detected.
-            else:
-                AddMsgAndPrint("\nNo Culverts detected!",1)
-                cellSize = gp.Describe(DEM_aoi).MeanCellWidth
-                gp.Fill_sa(DEM_aoi, Fill_hydroDEM)
-                AddMsgAndPrint("\nSuccessfully filled sinks in " + os.path.basename(DEM_aoi) + " to remove small imperfections",1)
+                    Fill_hydroDEM = Fill(DEM_aoi)
 
         else:
-            AddMsgAndPrint("\nNo Culverts detected!",1)
-            cellSize = gp.Describe(DEM_aoi).MeanCellWidth
-            gp.Fill_sa(DEM_aoi, Fill_hydroDEM)
-            AddMsgAndPrint("\nSuccessfully filled sinks in " + os.path.basename(DEM_aoi) + " to remove small imperfections",1)
+            AddMsgAndPrint("\nNo Culverts detected!")
+            Fill_hydroDEM = Fill(DEM_aoi)
+
+        AddMsgAndPrint("\nSuccessfully filled sinks in Fill_hydroDEM to remove small imperfections")
 
         # ---------------------------------------------------------------------------------------------- Create Stream Network
-        # Create Flow Direction Grid...
-        gp.FlowDirection_sa(Fill_hydroDEM, FlowDir, "NORMAL", "")
+        # Create Flow Direction Grid.
+        outFlowDirection = FlowDirection(Fill_hydroDEM, "NORMAL")
+        outFlowDirection.save(FlowDir)
 
         # Create Flow Accumulation Grid...
-        gp.FlowAccumulation_sa(FlowDir, FlowAccum, "", "INTEGER")
+        outFlowAccumulation = FlowAccumulation(FlowDir, "", "INTEGER")
+        outFlowAccumulation.save(FlowAccum)
 
-        # Need to compute a histogram for the FlowAccumulation layer so that the full range of values is captured for subsequent stream generation
+        # Need to compute a histogram for the FlowAccumulation layer so that the full range of values are captured for subsequent stream generation
         # This tries to fix a bug of the primary channel not generating for large watersheds with high values in flow accumulation grid
-        gp.CalculateStatistics_management(FlowAccum)
-
-        AddMsgAndPrint("\nSuccessfully created Flow Accumulation and Flow Direction",1)
+        arcpy.CalculateStatistics_management(FlowAccum)
+        AddMsgAndPrint("\nSuccessfully created Flow Accumulation and Flow Direction")
 
         # stream link will be created using pixels that have a flow accumulation greater than the
         # user-specified acre threshold
         if streamThreshold > 0:
 
-            # Calculating flow accumulation value for appropriate acre threshold
-            if gp.Describe(DEM_aoi).SpatialReference.LinearUnitName == "Meter":
-                acreThresholdVal = round((float(streamThreshold) * 4046.85642)/(cellSize*cellSize))
-                conExpression = "Value >= " + str(acreThresholdVal)
-
-            elif gp.Describe(DEM_aoi).SpatialReference.LinearUnitName == "Foot":
-                acreThresholdVal = round((float(streamThreshold) * 43560)/(cellSize*cellSize))
-                conExpression = "Value >= " + str(acreThresholdVal)
-
-            elif gp.Describe(DEM_aoi).SpatialReference.LinearUnitName == "Foot_US":
-                acreThresholdVal = round((float(streamThreshold) * 43560)/(cellSize*cellSize))
-                conExpression = "Value >= " + str(acreThresholdVal)
-
-            else:
-                acreThresholdVal = round(float(streamThreshold)/(cellSize*cellSize))
-                conExpression = "Value >= " + str(acreThresholdVal)
-
-
+            acreConvFactor = acreConversionDict.get(linearUnits)
+            acreThresholdVal = round((float(streamThreshold) * acreConvFactor)/(demCellSize**2))
+            conExpression = "Value >= " + str(acreThresholdVal)
 
             # Select all cells that are greater than conExpression
-            gp.Con_sa(FlowAccum, FlowAccum, conFlowAccum, "", conExpression)
+            conFlowAccum = Con(FlowAccum, FlowAccum, "", conExpression)
 
             # Create Stream Link Works
-            gp.StreamLink_sa(conFlowAccum, FlowDir, streamLink)
-            del conExpression
+            outStreamLink = StreamLink(conFlowAccum,FlowDir)
 
         # All values in flowAccum will be used to create stream link
         else:
             acreThresholdVal = 0
-            gp.StreamLink_sa(FlowAccum, FlowDir, streamLink)
+            outStreamLink = StreamLink(FlowAccum,FlowDir)
 
         # Converts a raster representing a linear network to features representing the linear network.
         # creates field grid_code
@@ -516,7 +507,6 @@ if __name__ == '__main__':
 
         # ------------------------------------------------------------------------------------------------ Delete unwanted datasets
         gp.delete_management(Fill_hydroDEM)
-        gp.delete_management(conFlowAccum)
         gp.delete_management(streamLink)
 
         # ------------------------------------------------------------------------------------------------ Compact FGDB

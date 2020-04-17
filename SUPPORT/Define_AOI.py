@@ -31,6 +31,7 @@
 #   written to hard disk.
 # - All describe functions use the arcpy.da.Describe functionality.
 # - All field calculation expressions are in PYTHON3 format.
+# - Used acre conversiont dictionary and z-factor lookup table
 # - All cursors were updated to arcpy.da
 # - Updated AddMsgAndPrint to remove ArcGIS 10 boolean and gp function
 # - Updated print_exception function.  Traceback functions slightly changed for Python 3.6.
@@ -42,6 +43,7 @@
 # - Main code is wrapped in if __name__ == '__main__': even though script will never be
 #   used as independent library.
 # - Updated and Tested for ArcGIS Pro 2.4.2 and python 3.6
+# - Normal messages are no longer Warnings.
 
 #
 ## ===============================================================================================================
@@ -369,7 +371,7 @@ if __name__ == '__main__':
 
         ## ---------------------------------------------------------------------------------------------- Z-factor conversion Lookup table
         # lookup dictionary to convert XY units to area.  Key = XY unit of DEM; Value = conversion factor to sq.meters
-        acreConversionDict = {'Meter':4046.8564224,'Foot':43560,'Foot_US':43560,'Centimeter':40470000,'Inch':6273000}
+        acreConversionDict = {'Meters':4046.8564224,'Meter':4046.8564224,'Foot':43560,'Foot_US':43560,'Feet':43560, 'Centimeter':40470000,'Inch':6273000}
 
         # Assign Z-factor based on XY and Z units of DEM
         # the following represents a matrix of possible z-Factors
