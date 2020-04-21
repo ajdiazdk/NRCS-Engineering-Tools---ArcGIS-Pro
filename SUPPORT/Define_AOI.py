@@ -23,6 +23,7 @@
 # ==========================================================================================
 # Updated  4/15/2020 - Adolfo Diaz
 #
+# - Updated and Tested for ArcGIS Pro 2.4.2 and python 3.6
 # - Added functionality to utilize a DEM image service or a DEM in GCS.  Added 2 new
 #   function to handle this capability: extractSubsetFromGCSdem and getPCSresolutionFromGCSraster.
 # - If GCS DEM is used then the coordinate system of the FGDB will become the same as the AOI
@@ -33,6 +34,7 @@
 # - All field calculation expressions are in PYTHON3 format.
 # - Used acre conversiont dictionary and z-factor lookup table
 # - All cursors were updated to arcpy.da
+# - Added code to remove layers from an .aprx rather than simply deleting them
 # - Updated AddMsgAndPrint to remove ArcGIS 10 boolean and gp function
 # - Updated print_exception function.  Traceback functions slightly changed for Python 3.6.
 # - Added Snap Raster environment
@@ -42,8 +44,7 @@
 # - Every function including main is in a try/except clause
 # - Main code is wrapped in if __name__ == '__main__': even though script will never be
 #   used as independent library.
-# - Updated and Tested for ArcGIS Pro 2.4.2 and python 3.6
-# - Normal messages are no longer Warnings.
+# - Normal messages are no longer Warnings unnecessarily.
 
 #
 ## ===============================================================================================================
@@ -353,7 +354,7 @@ if __name__ == '__main__':
         Hillshade_aoi = watershedGDB_path + os.sep + projectName + "_Hillshade"
         depthGrid = watershedGDB_path + os.sep + projectName + "_DepthGrid"
 
-        # ArcGIS Pro Map Layers
+        # ArcGIS Pro Layers
         aoiOut = "" + projectName + "_AOI"
         contoursOut = "" + projectName + "_Contours_" + str(int(interval)).replace(".","_") + "ft"
         demOut = "" + projectName + "_DEM"
@@ -437,26 +438,25 @@ if __name__ == '__main__':
         AddMsgAndPrint("\tCell Size: " + str(demCellSize) + " " + linearUnits,0)
         AddMsgAndPrint("\tZ-Factor used: " + str(zFactor))
 
-        # ---------------------------------------------------------------------------------------------- Remove any project layers from ArcGIS Pro
-        x = 0
-        for layer in (demOut,hillshadeOut,depthOut,contoursOut):
+        # --------------------------------------------------------------------------------------- Remove any project layers from aprx and workspace
+        datasetsToRemove = (demOut,hillshadeOut,depthOut,contoursOut)       # Full path of layers
+        datasetsBaseName = [os.path.basename(x) for x in datasetsToRemove]  # layer names as they would appear in .aprx
 
-            if arcpy.Exists(layer):
-                if x == 0:
-                    AddMsgAndPrint("\nRemoving previous layers from your ArcGIS Pro session " + watershedGDB_name ,1)
-                    x+=1
+        aprx = arcpy.mp.ArcGISProject("CURRENT")
 
-                try:
-                    arcpy.Delete_management(layer)
-                    AddMsgAndPrint("\tRemoving " + layer)
-                except:
-                    pass
+        # Remove layers from ArcGIS Pro Session if executed from an .aprx
+        try:
+            for maps in aprx.listMaps():
+                for lyr in maps.listLayers():
+                    if lyr.name in datasetsBaseName:
+                        maps.removeLayer(lyr)
+        except:
+            pass
 
-        # ------------------------------------------------------------------------ If project geodatabase exists remove any previous datasets
         if arcpy.Exists(watershedGDB_path):
 
             x = 0
-            for dataset in (DEM_aoi,Hillshade,depthGrid,Contours):
+            for dataset in datasetsToRemove:
 
                 if arcpy.Exists(dataset):
 
@@ -467,7 +467,7 @@ if __name__ == '__main__':
 
                     try:
                         arcpy.Delete_management(dataset)
-                        AddMsgAndPrint("\tDeleting....." + os.path.basename(dataset),0)
+                        AddMsgAndPrint("\tDeleting....." + os.path.basename(dataset),1)
                     except:
                         pass
 
@@ -672,7 +672,7 @@ if __name__ == '__main__':
         # ------------------------------------------------------------------------------------------------ Compact FGDB
         try:
             arcpy.Compact_management(watershedGDB_path)
-            AddMsgAndPrint("\nSuccessfully Compacted FGDB: " + os.path.basename(watershedGDB_path),0)
+            AddMsgAndPrint("\nSuccessfully Compacted FGDB: " + os.path.basename(watershedGDB_path))
         except:
             pass
 
@@ -685,8 +685,7 @@ if __name__ == '__main__':
         arcpy.SetParameterAsText(8, Hillshade_aoi)
         arcpy.SetParameterAsText(9, depthGrid)
 
-        AddMsgAndPrint("\nAdding Layers to ArcGIS Pro",0)
-        AddMsgAndPrint("\n")
+        AddMsgAndPrint("\nAdding Layers to ArcGIS Pro\n")
 
     except:
         print_exception()

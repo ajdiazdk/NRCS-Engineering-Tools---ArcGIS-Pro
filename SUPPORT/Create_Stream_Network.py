@@ -21,7 +21,35 @@
 # Updated by Chris Morse, USDA NRCS, 2019
 
 # ==========================================================================================
-# Updated  4/15/2020 - Adolfo Diaz
+# Updated  4/20/2020 - Adolfo Diaz
+#
+# - Updated and Tested for ArcGIS Pro 2.4.2 and python 3.6
+# - All temporary raster layers such as Fill and Minus are stored in Memory and no longer
+#   written to hard disk.
+# - All describe functions use the arcpy.da.Describe functionality.
+# - Removed determineOverlap() function since this can now be done using the extent
+#   object to determine overalop of culverts within the AOI
+# - All field calculation expressions are in PYTHON3 format.
+# - Used acre conversiont dictionary and z-factor lookup table
+# - All cursors were updated to arcpy.da
+# - Updated AddMsgAndPrint to remove ArcGIS 10 boolean and gp function
+# - Updated print_exception function.  Traceback functions slightly changed for Python 3.6.
+# - Added Snap Raster environment
+# - Added parallel processing factor environment
+# - swithced from sys.exit() to exit()
+# - All gp functions were translated to arcpy
+# - Every function including main is in a try/except clause
+# - Main code is wrapped in if __name__ == '__main__': even though script will never be
+#   used as independent library.
+# - Normal messages are no longer Warnings unnecessarily.
+
+# ==========================================================================================
+# Updated  4/20/2020 - Adolfo Diaz
+#
+# - Decided to clip the culverts to the AOI instead of using the extent object b/c
+#   county or statewide culvert layers may be used in the future and there is no sense
+#   in assessing every culvert within a couty/state wide layer.
+# - Added code to remove layers from an .aprx rather than simply deleting them
 
 #
 ## ===============================================================================================================
@@ -108,145 +136,6 @@ def logBasicSettings():
         exit()
 
 ## ================================================================================================================
-def determineOverlap(culvertLayer):
-    # This function will compute a geometric intersection of the project_AOI boundary and the culvert
-    # layer to determine overlap.
-
-    try:
-        # Make a layer from the project_AOI
-        if gp.exists("AOI_lyr"):
-            gp.delete_management("AOI_lyr")
-
-        gp.MakeFeatureLayer(projectAOI_path,"AOI_lyr")
-
-        if gp.exists("culvertsTempLyr"):
-            gp.delete_management("culvertsTempLyr")
-
-        gp.MakeFeatureLayer(culvertLayer,"culvertsTempLyr")
-
-        numOfCulverts = int((gp.GetCount_management(culvertLayer)).GetOutput(0))
-
-        # Select all culverts that are completely within the AOI polygon
-        gp.SelectLayerByLocation("culvertsTempLyr", "completely_within", "AOI_lyr")
-        numOfCulvertsWithinAOI = int((gp.GetCount_management("culvertsTempLyr")).GetOutput(0))
-
-        # There are no Culverts completely in AOI; may be some on the AOI boundary
-        if numOfCulvertsWithinAOI == 0:
-
-            gp.SelectLayerByAttribute_management("culvertsTempLyr", "CLEAR_SELECTION", "")
-            gp.SelectLayerByLocation("culvertsTempLyr", "crossed_by_the_outline_of", "AOI_lyr")
-
-            # Check for culverts on the AOI boundary
-            numOfIntersectedCulverts = int((gp.GetCount_management("culvertsTempLyr")).GetOutput(0))
-
-            # No culverts within AOI or intersecting AOI
-            if numOfIntersectedCulverts == 0:
-
-                AddMsgAndPrint("\tAll Culverts are outside of your Area of Interest",0)
-                AddMsgAndPrint("\tNo culverts will be used to hydro enforce " + os.path.basename(DEM_aoi),0)
-
-                gp.delete_management("AOI_lyr")
-                gp.delete_management("culvertsTempLyr")
-                del numOfCulverts
-                del numOfCulvertsWithinAOI
-                del numOfIntersectedCulverts
-
-                return False
-
-            # There are some culverts on AOI boundary but at least one culvert completely outside AOI
-            else:
-
-                # All Culverts are intersecting the AOI
-                if numOfCulverts == numOfIntersectedCulverts:
-
-                    AddMsgAndPrint("\tAll Culvert(s) are intersecting the AOI Boundary",0)
-                    AddMsgAndPrint("\tCulverts will be clipped to AOI",0)
-
-                 # Some Culverts intersecting AOI and some completely outside.
-                else:
-
-                    AddMsgAndPrint("\t" + str(numOfCulverts) + " Culverts digitized",0)
-                    AddMsgAndPrint("\n\tThere is " + str(numOfCulverts - numOfIntersectedCulverts) + " culvert(s) completely outside the AOI Boundary",0)
-                    AddMsgAndPrint("\tCulverts will be clipped to AOI",0)
-
-                clippedCulverts = watershedGDB_path + os.sep + "Layers" + os.sep + projectName + "_clippedCulverts"
-                gp.Clip_analysis(culvertLayer, projectAOI_path, clippedCulverts)
-
-                gp.delete_management("AOI_lyr")
-                gp.delete_management("culvertsTempLyr")
-                del numOfCulverts
-                del numOfCulvertsWithinAOI
-                del numOfIntersectedCulverts
-
-                gp.delete_management(culverts)
-                gp.rename(clippedCulverts,culverts)
-
-                AddMsgAndPrint("\n\t" + str(int(gp.GetCount_management(culverts).getOutput(0))) + " Culvert(s) will be used to hydro enforce " + os.path.basename(DEM_aoi),0)
-
-                return True
-
-        # all culverts are completely within AOI; Ideal scenario
-        elif numOfCulvertsWithinAOI == numOfCulverts:
-
-            AddMsgAndPrint("\n\t" + str(numOfCulverts) + " Culvert(s) will be used to hydro enforce " + os.path.basename(DEM_aoi),0)
-
-            gp.delete_management("AOI_lyr")
-            gp.delete_management("culvertsTempLyr")
-            del numOfCulverts
-            del numOfCulvertsWithinAOI
-
-            return True
-
-        # combination of scenarios.  Would require multiple outlets to have been digitized. A
-        # will be required.
-        else:
-
-            gp.SelectLayerByAttribute_management("culvertsTempLyr", "CLEAR_SELECTION", "")
-            gp.SelectLayerByLocation("culvertsTempLyr", "crossed_by_the_outline_of", "AOI_lyr")
-
-            numOfIntersectedCulverts = int((gp.GetCount_management("culvertsTempLyr")).GetOutput(0))
-
-            AddMsgAndPrint("\t" + str(numOfCulverts) + " Culverts digitized",0)
-
-            # there are some culverts crossing the AOI boundary and some within.
-            if numOfIntersectedCulverts > 0 and numOfCulvertsWithinAOI > 0:
-
-                AddMsgAndPrint("\n\tThere is " + str(numOfIntersectedCulverts) + " culvert(s) intersecting the AOI Boundary",0)
-                AddMsgAndPrint("\tCulverts will be clipped to AOI",0)
-
-            # there are some culverts outside the AOI boundary and some within.
-            elif numOfIntersectedCulverts == 0 and numOfCulvertsWithinAOI > 0:
-
-                AddMsgAndPrint("\n\tThere is " + str(numOfCulverts - numOfCulvertsWithinAOI) + " culvert(s) completely outside the AOI Boundary",0)
-                AddMsgAndPrint("\tCulverts(s) will be clipped to AOI",0)
-
-            # All outlets are are intersecting the AOI boundary
-            else:
-                AddMsgAndPrint("\n\tOutlet(s) is intersecting the AOI Boundary and will be clipped to AOI",0)
-
-            clippedCulverts = watershedGDB_path + os.sep + "Layers" + os.sep + projectName + "_clippedCulverts"
-            gp.Clip_analysis(culvertLayer, projectAOI_path, clippedCulverts)
-
-            gp.delete_management("AOI_lyr")
-            gp.delete_management("culvertsTempLyr")
-            del numOfCulverts
-            del numOfCulvertsWithinAOI
-            del numOfIntersectedCulverts
-
-            gp.delete_management(culverts)
-            gp.rename(clippedCulverts,culverts)
-
-            AddMsgAndPrint("\n\t" + str(int(gp.GetCount_management(culverts).getOutput(0))) + " Culvert(s) will be used to hydro enforce " + os.path.basename(DEM_aoi),0)
-
-            return True
-
-    except:
-        AddMsgAndPrint("\nFailed to determine overlap with " + projectAOI_path + ". (determineOverlap)",2)
-        print_exception()
-        AddMsgAndPrint("No culverts will be used to hydro enforce " + os.path.basename(DEM_aoi),2)
-        return False
-
-## ================================================================================================================
 # Import system modules
 import arcpy, sys, os, traceback
 from arcpy.sa import *
@@ -265,12 +154,12 @@ if __name__ == '__main__':
         # --------------------------------------------------------------------------------------------- Input Parameters
         AOI = arcpy.GetParameterAsText(0)
         burnCulverts = arcpy.GetParameterAsText(1)
-        streamThreshold = arcpy.GetParameterAsText(2)
+        streamThreshold = float(arcpy.GetParameterAsText(2))
 
         # Uncomment the following  3 lines to run from pythonWin
-##        AOI = r'C:\flex\flex_EngTools.gdb\Layers\Project_AOI'
+##        AOI = r'E:\NRCS_Engineering_Tools_ArcPro\Testing\Testing_EngTools.gdb\Layers\Testing_AOI'
 ##        burnCulverts = ""
-##        streamThreshold = 1
+##        streamThreshold = float(1)
 
         # Set environmental variables
         arcpy.env.parallelProcessingFactor = "75%"
@@ -297,18 +186,15 @@ if __name__ == '__main__':
         # --------------------------------------------------------------- Datasets
         # ------------------------------ Permanent Datasets
         culverts = watershedGDB_FDpath + os.sep + projectName + "_Culverts"
-        streams =watershedGDB_FDpath + os.sep + projectName + "_Streams"
+        streams = watershedGDB_FDpath + os.sep + projectName + "_Streams"
         DEM_aoi = watershedGDB_path + os.sep + projectName + "_DEM"
         hydroDEM = watershedGDB_path + os.sep + "hydroDEM"
         FlowAccum = watershedGDB_path + os.sep + "flowAccumulation"
         FlowDir = watershedGDB_path + os.sep + "flowDirection"
 
-        # ----------------------------- Temporary Datasets
-        streamLink = watershedGDB_path + os.sep + "streamLink"
-
         # check if culverts exist.  This is only needed b/c the script may be executed manually
         numOfCulverts = int(arcpy.GetCount_management(burnCulverts).getOutput(0))
-        if burnCulverts == "#" or burnCulverts == "" or burnCulverts == False or numOfCulverts < 1 or len(burnCulverts) < 1:
+        if len(burnCulverts) < 1 or not numOfCulverts:
             culvertsExist = False
         else:
             culvertsExist = True
@@ -326,9 +212,24 @@ if __name__ == '__main__':
             AddMsgAndPrint("Run Watershed Delineation Tool #1: Define Area of Interest",2)
             exit()
 
-        # ----------------------------------------------------------------------------------------------------------------------- Delete old datasets
+        # --------------------------------------------------------------------------------------- Remove any project layers from aprx and workspace
+        datasetsToRemove = (streams,hydroDEM,FlowAccum,FlowDir)             # Full path of layers
+        datasetsBaseName = [os.path.basename(x) for x in datasetsToRemove]  # layer names as they would appear in .aprx
 
-        datasetsToRemove = (streams,Fill_hydroDEM,hydroDEM,FlowAccum,FlowDir,culvertsTemp,culvertBuffered,culvertRaster,conFlowAccum,streamLink)
+        # Remove culverts from .aprx as well
+        if culvertsExist:
+            datasetsBaseName.append(os.path.basename(culverts))
+
+        aprx = arcpy.mp.ArcGISProject("CURRENT")
+
+        # Remove layers from ArcGIS Pro Session
+        try:
+            for maps in aprx.listMaps():
+                for lyr in maps.listLayers():
+                    if lyr.name in datasetsBaseName:
+                       maps.removeLayer(lyr)
+        except:
+            pass
 
         x = 0
         for dataset in datasetsToRemove:
@@ -336,12 +237,12 @@ if __name__ == '__main__':
             if arcpy.Exists(dataset):
 
                 if x < 1:
-                    AddMsgAndPrint("\nRemoving old datasets from FGDB: " + watershedGDB_name)
+                    AddMsgAndPrint("\nRemoving old datasets from FGDB: " + watershedGDB_name,1)
                     x += 1
 
                 try:
                     arcpy.Delete_management(dataset)
-                    AddMsgAndPrint("\tDeleting....." + os.path.basename(dataset))
+                    AddMsgAndPrint("\tDeleting....." + os.path.basename(dataset),1)
                 except:
                     pass
 
@@ -359,6 +260,7 @@ if __name__ == '__main__':
         arcpy.env.cellSize = demCellSize
         arcpy.env.snapRaster = demPath
         arcpy.env.outputCoordinateSystem = demSR
+        arcpy.env.workspace = watershedGDB_path
 
         ## ------------------------------------------------------------------------- Z-factor conversion Lookup table
         # lookup dictionary to convert XY units to area.  Key = XY unit of DEM; Value = conversion factor to sq.meters
@@ -396,45 +298,41 @@ if __name__ == '__main__':
                     # delete the culverts feature class; new one will be created
                     if arcpy.Exists(culverts):
                         arcpy.Delete_management(culverts)
-                        arcpy.CopyFeatures_management(burnCulverts, culverts)
-                        AddMsgAndPrint("\nSuccessfully Recreated \"Culverts\" feature class.",1)
+                        arcpy.Clip_analysis(burnCulverts,aoiPath,culverts)
+                        AddMsgAndPrint("\nSuccessfully Recreated \"Culverts\" feature class.")
 
                     else:
-                        arcpy.CopyFeatures_management(burnCulverts, culverts)
-                        AddMsgAndPrint("\nSuccessfully Created \"Culverts\" feature class",1)
+                        arcpy.Clip_analysis(burnCulverts,aoiPath,culverts)
+                        AddMsgAndPrint("\nSuccessfully Created \"Culverts\" feature class")
 
                 # paths are the same therefore input was from within FGDB
                 else:
                     AddMsgAndPrint("\nUsing Existing \"Culverts\" feature class:",1)
                     reuseCulverts = True
 
-                # --------------------------------------------------------------------- determine overlap of culverts & AOI
-                AddMsgAndPrint("\nChecking Placement of Culverts")
+                # Number of culverts within AOI
+                numOfCulvertsWithinAOI = int(arcpy.GetCount_management(culverts).getOutput(0))
 
-                # True: culverts are properly inside of AOI
-                # False: culverts are intersecting AOI or outside
-                bCulvertIntersection = True
-
-                for row in arcpy.da.SearchCursor(culverts,['SHAPE@']):
-                    culvertExtent = row[0].extent
-                    if not aoiExtent.contains(culvertExtent):
-                        bCulvertIntersection = False
-                        break
+##                for row in arcpy.da.SearchCursor(culverts,['SHAPE@']):
+##                    culvertExtent = row[0].extent
+##                    if aoiExtent.contains(culvertExtent):
+##                        numOfCulvertsWithinAOI+=1
+##                del row
 
                 # ------------------------------------------------------------------- Buffer Culverts
-                if bCulvertIntersection:
+                if numOfCulvertsWithinAOI:
 
                     # determine linear units to set buffer value to the equivalent of 1 pixel
                     if linearUnits in ('Meter','Meters'):
-                        bufferSize = str(cellSize) + " Meters"
-                        AddMsgAndPrint("\nBuffer size applied on Culverts: " + str(cellSize) + " Meter(s)")
+                        bufferSize = str(demCellSize) + " Meters"
+                        AddMsgAndPrint("\nBuffer size applied on Culverts: " + str(demCellSize) + " Meter(s)")
 
                     elif linearUnits in ('Foot','Foot_US','Feet'):
-                        bufferSize = str(cellSize) + " Feet"
+                        bufferSize = str(demCellSize) + " Feet"
                         AddMsgAndPrint("\nBuffer size applied on Culverts: " + bufferSize)
 
                     else:
-                        bufferSize = str(cellSize) + " Unknown"
+                        bufferSize = str(demCellSize) + " Unknown"
                         AddMsgAndPrint("\nBuffer size applied on Culverts: Equivalent of 1 pixel since linear units are unknown",0)
 
                     # Buffer the culverts to 1 pixel
@@ -447,18 +345,21 @@ if __name__ == '__main__':
                     arcpy.CalculateField_management(culvertBuffered, "ZONE", expression, "PYTHON3")
 
                     # Get the minimum elevation value for each culvert
+                    culvertRaster = watershedGDB_path + os.sep + "culvertRaster"
                     culvertMinValue = ZonalStatistics(culvertBuffered, "ZONE", DEM_aoi, "MINIMUM", "NODATA")
+                    culvertMinValue.save(culvertRaster)
                     AddMsgAndPrint("\nApplying the minimum Zonal DEM Value to the Culverts")
 
                     # Elevation cells that overlap the culverts will get the minimum elevation value
-                    mosaicList = DEM_aoi + ";" + culvertMinValue
+                    mosaicList = DEM_aoi + ";" + culvertRaster
                     arcpy.MosaicToNewRaster_management(mosaicList, watershedGDB_path, "hydroDEM", "#", "32_BIT_FLOAT", demCellSize, "1", "LAST", "#")
                     AddMsgAndPrint("\nFusing Culverts and " + demName + " to create " + os.path.basename(hydroDEM))
 
-                    Fill_hydroDEM_ = Fill(hydroDEM)
+                    Fill_hydroDEM = Fill(hydroDEM)
 
                 # No Culverts will be used due to no overlap or determining overlap error.
                 else:
+                    AddMsgAndPrint("\nThere were no culverts digitized within " + aoiName,1)
                     Fill_hydroDEM = Fill(DEM_aoi)
 
         else:
@@ -469,10 +370,12 @@ if __name__ == '__main__':
 
         # ---------------------------------------------------------------------------------------------- Create Stream Network
         # Create Flow Direction Grid.
+        arcpy.SetProgressorLabel("Creating Flow Direction")
         outFlowDirection = FlowDirection(Fill_hydroDEM, "NORMAL")
         outFlowDirection.save(FlowDir)
 
         # Create Flow Accumulation Grid...
+        arcpy.SetProgressorLabel("Creating Flow Accumulation")
         outFlowAccumulation = FlowAccumulation(FlowDir, "", "INTEGER")
         outFlowAccumulation.save(FlowAccum)
 
@@ -486,55 +389,47 @@ if __name__ == '__main__':
         if streamThreshold > 0:
 
             acreConvFactor = acreConversionDict.get(linearUnits)
-            acreThresholdVal = round((float(streamThreshold) * acreConvFactor)/(demCellSize**2))
+            acreThresholdVal = round((streamThreshold * acreConvFactor)/(demCellSize**2))
             conExpression = "Value >= " + str(acreThresholdVal)
 
-            # Select all cells that are greater than conExpression
+            # Select all cells that are greater than or equal to the acre stream threshold value
             conFlowAccum = Con(FlowAccum, FlowAccum, "", conExpression)
 
             # Create Stream Link Works
+            arcpy.SetProgressorLabel("Creating Stream Link")
             outStreamLink = StreamLink(conFlowAccum,FlowDir)
 
         # All values in flowAccum will be used to create stream link
         else:
+            arcpy.SetProgressorLabel("Creating Stream Link")
             acreThresholdVal = 0
             outStreamLink = StreamLink(FlowAccum,FlowDir)
 
         # Converts a raster representing a linear network to features representing the linear network.
         # creates field grid_code
-        gp.StreamToFeature_sa(streamLink, FlowDir, streams, "SIMPLIFY")
-        AddMsgAndPrint("\nSuccessfully created stream linear network using a flow accumulation value >= " + str(acreThresholdVal),1)
+        StreamToFeature(outStreamLink, FlowDir, streams, "SIMPLIFY")
+        AddMsgAndPrint("\nSuccessfully created stream linear network using a flow accumulation value >= " + str(acreThresholdVal))
 
         # ------------------------------------------------------------------------------------------------ Delete unwanted datasets
-        gp.delete_management(Fill_hydroDEM)
-        gp.delete_management(streamLink)
+        arcpy.Delete_management(Fill_hydroDEM)
+        arcpy.Delete_management(outStreamLink)
 
         # ------------------------------------------------------------------------------------------------ Compact FGDB
         try:
-            gp.compact_management(watershedGDB_path)
-            AddMsgAndPrint("\nSuccessfully Compacted FGDB: " + os.path.basename(watershedGDB_path),1)
+            arcpy.Compact_management(watershedGDB_path)
+            AddMsgAndPrint("\nSuccessfully Compacted FGDB: " + os.path.basename(watershedGDB_path))
         except:
             pass
 
         # ------------------------------------------------------------------------------------------------ Prepare to Add to Arcmap
 
-        gp.SetParameterAsText(3, streams)
+        arcpy.SetParameterAsText(3, streams)
 
         if not reuseCulverts:
-            gp.SetParameterAsText(4, culverts)
+            arcpy.SetParameterAsText(4, culverts)
 
-        AddMsgAndPrint("\nAdding Layers to ArcMap",1)
-        AddMsgAndPrint("",1)
-
-        # ------------------------------------------------------------------------------------------------ Clean up Time!
-        gp.RefreshCatalog(watershedGDB_path)
-
-        # Restore original environments
-        gp.extent = tempExtent
-        gp.mask = tempMask
-        gp.SnapRaster = tempSnapRaster
-        gp.CellSize = tempCellSize
-        gp.OutputCoordinateSystem = tempCoordSys
+        AddMsgAndPrint("\nAdding Layers to ArcGIS Pro Session")
+        AddMsgAndPrint("")
 
     except:
         print_exception()
