@@ -100,7 +100,6 @@ def logBasicSettings():
         # record basic user inputs and settings to log file for future purposes
 
         import getpass, time
-
         arcInfo = arcpy.GetInstallInfo()  # dict of ArcGIS Pro information
 
         f = open(textFilePath,'a+')
@@ -285,7 +284,7 @@ def getPCSresolutionFromGCSraster(raster,units):
 
 ## ================================================================================================================
 # Import system modules
-import arcpy, sys, os, arcgisscripting, traceback, re
+import arcpy, sys, os, traceback, re
 from arcpy.sa import *
 from math import cos, sin, asin, sqrt, radians
 
