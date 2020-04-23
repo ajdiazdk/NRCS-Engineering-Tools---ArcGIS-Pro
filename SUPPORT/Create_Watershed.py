@@ -99,10 +99,10 @@ def logBasicSettings():
 
     f = open(textFilePath,'a+')
     f.write("\n################################################################################################################\n")
-    f.write("Executing \"3. Create Watershed\" for ArcGIS 9.3 and 10\n")
+    f.write("Executing \"3. Create Watershed\" Tool")
     f.write("User Name: " + getpass.getuser() + "\n")
     f.write("Date Executed: " + time.ctime() + "\n")
-    f.write(arcInfo['ProductName'] + ": " + arcInfo['Version'])
+    f.write(arcInfo['ProductName'] + ": " + arcInfo['Version'] + "\n")
     f.write("User Parameters:\n")
     f.write("\tWorkspace: " + userWorkspace + "\n")
     f.write("\tStreams: " + streamsPath + "\n")
@@ -509,8 +509,6 @@ if __name__ == '__main__':
             AddMsgAndPrint("\nCalculating average slope...")
 
             arcpy.env.mask = watershed
-            #slopeGrid = "in_memory" + os.sep + os.path.basename(arcpy.CreateScratchName("slopeGrid",data_type="RasterDataset",workspace=watershedGDB_path))
-            #slopeStats = "in_memory" + os.sep + os.path.basename(arcpy.CreateScratchName("slopeStats",data_type="ArcInfoTable",workspace=watershedGDB_path))
 
             if arcpy.Exists(DEM_aoi):
 
@@ -534,9 +532,9 @@ if __name__ == '__main__':
 
             AddMsgAndPrint("\n\tSuccessfully Calculated Average Slope")
 
-            AddMsgAndPrint("\nCreate Watershed Results:",1)
+            AddMsgAndPrint("\nCreate Watershed Results:")
             AddMsgAndPrint("\n===================================================")
-            AddMsgAndPrint("\tUser Watershed: " + str(watershedOut),0)
+            AddMsgAndPrint("\tUser Watershed: " + str(watershedOut))
 
             with arcpy.da.UpdateCursor(watershed,['Subbasin','Avg_Slope','Acres','SHAPE@AREA']) as cursor:
                 for row in cursor:

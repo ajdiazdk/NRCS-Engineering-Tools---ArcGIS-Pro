@@ -107,7 +107,7 @@ def logBasicSettings():
         f.write("Executing \"1.Define Area of Interest\" tool\n")
         f.write("User Name: " + getpass.getuser() + "\n")
         f.write("Date Executed: " + time.ctime() + "\n")
-        f.write(arcInfo['ProductName'] + ": " + arcInfo['Version'])
+        f.write(arcInfo['ProductName'] + ": " + arcInfo['Version'] + "\n")
         f.write("\nUser Parameters:\n")
         f.write("\tWorkspace: " + userWorkspace + "\n")
         f.write("\tInput Dem: " + demPath + "\n")

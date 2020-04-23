@@ -111,7 +111,7 @@ def logBasicSettings():
         f.write("Executing \"2.Create Stream Network\" Tool\n")
         f.write("User Name: " + getpass.getuser() + "\n")
         f.write("Date Executed: " + time.ctime() + "\n")
-        f.write(arcInfo['ProductName'] + ": " + arcInfo['Version'])
+        f.write(arcInfo['ProductName'] + ": " + arcInfo['Version'] + "\n")
         f.write("User Parameters:\n")
         f.write("\tWorkspace: " + userWorkspace + "\n")
         f.write("\tDem_AOI: " + DEM_aoi + "\n")
