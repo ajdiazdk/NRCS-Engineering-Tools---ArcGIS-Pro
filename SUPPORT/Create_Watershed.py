@@ -4,26 +4,46 @@
 # Author: Peter Mead
 # e-mail: pemead@co.becker.mn.us
 #
-# Author: Chris Morse
-#         IN State GIS Coordinator
-#         USDA - NRCS
-# e-mail: chris.morse@usda.gov
-# phone: 317.501.1578
-#
 # Author: Adolfo.Diaz
 #         GIS Specialist
 #         National Soil Survey Center
 #         USDA - NRCS
 # e-mail: adolfo.diaz@usda.gov
 # phone: 608.662.4422 ext. 216
-
+#
+# Author: Chris Morse
+#         IN State GIS Coordinator
+#         USDA - NRCS
+# e-mail: chris.morse@usda.gov
+# phone: 317.501.1578
+#
+#
 # Created by Peter Mead, Adolfo Diaz, USDA NRCS, 2013
 # Updated by Chris Morse, USDA NRCS, 2019
-
+#
 # ==========================================================================================
-# Updated  4/15/2020 - Adolfo Diaz
+# Updated  4/22/2020 - Adolfo Diaz
+#
+# - Updated and Tested for ArcGIS Pro 2.4.2 and python 3.6
+# - All temporary raster layers such as Fill and Minus are stored in Memory and no longer
+#   written to hard disk.
+# - All describe functions use the arcpy.da.Describe functionality.
+# - Removed determineOverlap() function since this can now be done using the extent
+#   object to determine overalop of culverts within the AOI
+# - All field calculation expressions are in PYTHON3 format.
+# - Used acre conversiont dictionary and z-factor lookup table
+# - All cursors were updated to arcpy.da
+# - Updated AddMsgAndPrint to remove ArcGIS 10 boolean and gp function
+# - Updated print_exception function.  Traceback functions slightly changed for Python 3.6.
+# - Added Snap Raster environment
+# - Added parallel processing factor environment
+# - swithced from sys.exit() to exit()
+# - All gp functions were translated to arcpy
+# - Every function including main is in a try/except clause
+# - Main code is wrapped in if __name__ == '__main__': even though script will never be
+#   used as independent library.
+# - Normal messages are no longer Warnings unnecessarily.
 
-# Create_Watershed.py
 ## ===============================================================================================================
 def print_exception():
 
@@ -116,13 +136,13 @@ def splitThousands(someNumber):
 
 ## ================================================================================================================
 # Import system modules
-import arcpy, sys, os, string, traceback, re
+import arcpy, sys, os, string, traceback, re, time
 from arcpy.sa import *
+import arcpy.cartography as CA
 
 if __name__ == '__main__':
 
     try:
-
         # Check out Spatial Analyst License
         if arcpy.CheckExtension("spatial") == "Available":
             arcpy.CheckOutExtension("spatial")
@@ -137,10 +157,14 @@ if __name__ == '__main__':
         createFlowPaths = arcpy.GetParameterAsText(3)
 
         # Uncomment the following 4 lines to run from pythonWin
-        ##    streams = r'C:\flex\flex_EngTools.gdb\Layers\Streams'
-        ##    outlet = r'C:\flex\flex_EngTools.gdb\Layers\outlet'
-        ##    userWtshdName = "testing10"
-        ##    createFlowPaths = "true"
+##        streams = r'E:\NRCS_Engineering_Tools_ArcPro\Testing\Testing_EngTools.gdb\Testing_Streams'
+##        outlet = r'E:\python_scripts\NRCS_Engineering_Tools\ArcMap_Testing\ArcMap_Testing_EngTools.gdb\DiazWtshd1_outlet'
+##        userWtshdName = "ProTest"
+##        createFlowPaths = "true"
+
+        # Set environmental variables
+        arcpy.env.parallelProcessingFactor = "75%"
+        arcpy.env.overwriteOutput = True
 
         if str(createFlowPaths).upper() == "TRUE":
             bCalcLHL = True
@@ -160,17 +184,16 @@ if __name__ == '__main__':
         userWorkspace = os.path.dirname(watershedGDB_path)
         watershedGDB_name = os.path.basename(watershedGDB_path)
         watershedFD = watershedGDB_path + os.sep + "Layers"
-        projectName = arcpy.ValidateTablename(os.path.basename(userWorkspace).replace(" ","_"))
+        projectName = arcpy.ValidateTableName(os.path.basename(userWorkspace).replace(" ","_"))
         projectAOI = watershedFD + os.sep + projectName + "_AOI"
         aoiName = os.path.basename(projectAOI)
 
         # --------------------------------------------------------------- Datasets
         # ------------------------------ Permanent Datasets
-        watershed = watershedFD + os.sep + (arcpy.ValidateTablename(userWtshdName, watershedFD))
+        watershed = watershedFD + os.sep + (arcpy.ValidateTableName(userWtshdName, watershedFD))
         FlowAccum = watershedGDB_path + os.sep + "flowAccumulation"
         FlowDir = watershedGDB_path + os.sep + "flowDirection"
         DEM_aoi = watershedGDB_path + os.sep + projectName + "_DEM"
-        DEMsmooth = watershedGDB_path + os.sep + "DEMsmooth"
 
         # Must Have a unique name for watershed -- userWtshdName gets validated, but that doesn't ensure a unique name
         # Append a unique digit to watershed if required -- This means that a watershed with same name will NOT be
@@ -178,18 +201,13 @@ if __name__ == '__main__':
         x = 1
         while x > 0:
             if arcpy.Exists(watershed):
-                watershed = watershedFD + os.sep + (arcpy.ValidateTablename(userWtshdName, watershedFD)) + str(x)
+                watershed = watershedFD + os.sep + (arcpy.ValidateTableName(userWtshdName, watershedFD)) + str(x)
                 x += 1
             else:
                 x = 0
         del x
 
         outletFC = watershedFD + os.sep + os.path.basename(watershed) + "_outlet"
-
-        # ---------------------------------------------------------------------------------------------- Temporary Datasets
-        wtshdDEMsmooth = watershedGDB_path + os.sep + "wtshdDEMsmooth"
-        slopeGrid = watershedGDB_path + os.sep + "slopeGrid"
-        slopeStats = watershedGDB_path + os.sep + "slopeStats"
 
         # Features in Arcmap
         watershedOut = "" + os.path.basename(watershed) + ""
@@ -230,28 +248,6 @@ if __name__ == '__main__':
             AddMsgAndPrint("Run Tool#2: \"Create Stream Network\" Again!  Exiting.....\n",2)
             sys.exit(0)
 
-        # ---------------------------------------------------------------------------------------------- Delete old datasets
-        datasetsToRemove = (outletBuffer,pourPointGrid,watershedGrid,watershedTemp,watershedDissolve,wtshdDEMsmooth,slopeGrid,slopeStats)
-
-        x = 0
-        for dataset in datasetsToRemove:
-
-            if arcpy.Exists(dataset):
-
-                if x < 1:
-                    AddMsgAndPrint("\nRemoving old datasets from FGDB: " + watershedGDB_name ,1)
-                    x += 1
-
-                try:
-                    arcpy.Delete_management(dataset)
-                    AddMsgAndPrint("\tDeleting....." + os.path.basename(dataset),0)
-                except:
-                    pass
-
-        del dataset
-        del datasetsToRemove
-        del x
-
         # ----------------------------------------------------------------------------------------------- Create New Outlet
         # -------------------------------------------- Features reside on hard disk;
         #                                              No heads up digitizing was used.
@@ -264,15 +260,15 @@ if __name__ == '__main__':
                 if arcpy.Exists(outletFC):
                     arcpy.Delete_management(outletFC)
                     arcpy.CopyFeatures_management(outlet, outletFC)
-                    AddMsgAndPrint("\nSuccessfully Recreated " + str(outletOut) + " feature class from existing layer",1)
+                    AddMsgAndPrint("\nSuccessfully Recreated " + str(outletOut) + " feature class from existing layer")
 
                 else:
                     arcpy.CopyFeatures_management(outlet, outletFC)
-                    AddMsgAndPrint("\nSuccessfully Created " + str(outletOut) + " feature class from existing layer",1)
+                    AddMsgAndPrint("\nSuccessfully Created " + str(outletOut) + " feature class from existing layer")
 
             # paths are the same therefore input IS pour point
             else:
-                AddMsgAndPrint("\nUsing Existing " + str(outletOut) + " feature class",1)
+                AddMsgAndPrint("\nUsing Existing " + str(outletOut) + " feature class")
 
         # -------------------------------------------- Features reside in Memory;
         #                                              heads up digitizing was used.
@@ -348,8 +344,8 @@ if __name__ == '__main__':
 
         # Create Watershed Raster using the raster pour point
         AddMsgAndPrint("\nDelineating Watershed(s)...")
-        watershedGrid = "in_memory" + os.sep + os.path.basename(arcpy.CreateScratchName("watershedGrid",data_type="RasterDataset",workspace=watershedGDB_path))
-        arcpy.Watershed_sa(FlowDir,pourPointGrid,watershedGrid,"VALUE")
+        #watershedGrid = "in_memory" + os.sep + os.path.basename(arcpy.CreateScratchName("watershedGrid",data_type="RasterDataset",workspace=watershedGDB_path))
+        watershedGrid = Watershed(FlowDir,pourPointGrid,"VALUE")
 
         # Convert results to simplified polygon
         watershedTemp = "in_memory" + os.sep + os.path.basename(arcpy.CreateScratchName("watershedTemp",data_type="FeatureClass",workspace=watershedGDB_path))
@@ -359,8 +355,8 @@ if __name__ == '__main__':
         arcpy.Dissolve_management(watershedTemp, watershed, "GRIDCODE", "", "MULTI_PART", "DISSOLVE_LINES")
         AddMsgAndPrint("\n\tSuccessfully Created " + str(int(arcpy.GetCount_management(watershed).getOutput(0))) + " Watershed(s) from " + str(outletOut),0)
 
-        arcpy.Delete_management(pourPointGrid)
-        arcpy.Delete_management(watershedGrid)
+        del pourPointGrid
+        del watershedGrid
 
         # -------------------------------------------------------------------------------------------------- Add and Calculate fields
         # Add Subbasin Field in watershed and calculate it to be the same as GRIDCODE
@@ -383,7 +379,7 @@ if __name__ == '__main__':
 
                 # ------------------------------------------- Derive Longest flow path for each subbasin
                 # Create Longest Path Feature Class
-                arcpy.CreateFeatureClass_management(watershedFD, FlowLengthName, "POLYLINE")
+                arcpy.CreateFeatureclass_management(watershedFD, FlowLengthName, "POLYLINE")
                 arcpy.AddField_management(Flow_Length, "Subbasin", "LONG", "", "", "", "", "NULLABLE", "NON_REQUIRED")
                 arcpy.AddField_management(Flow_Length, "Reach", "LONG", "", "", "", "", "NULLABLE", "NON_REQUIRED")
                 arcpy.AddField_management(Flow_Length, "Type", "TEXT", "", "", "", "", "NULLABLE", "NON_REQUIRED")
@@ -399,7 +395,7 @@ if __name__ == '__main__':
                 UP_GRID = FlowLength(FlowDir, "UPSTREAM")
 
                 # Calculate total downsteam flow length on FlowDir grid
-                DOWN_GRID = FlowLength(FlowDir, DOWN_GRID, "DOWNSTREAM")
+                DOWN_GRID = FlowLength(FlowDir, "DOWNSTREAM")
 
                 # Sum total upstream and downstream flow lengths
                 PLUS_GRID = Plus(UP_GRID, DOWN_GRID)
@@ -408,7 +404,7 @@ if __name__ == '__main__':
                 MAX_GRID = ZonalStatistics(watershed, "Subbasin", DOWN_GRID, "MAXIMUM", "DATA")
 
                 # Subtract tolerance from Maximum flow length -- where do you get tolerance from?
-                MINUS_GRID = Minus(MAX_GRID, "0.3")
+                MINUS_GRID = Minus(MAX_GRID, 0.3)
 
                 # Extract cells with positive difference to isolate longest flow path(s)
                 LONGPATH = GreaterThan(PLUS_GRID, MINUS_GRID)
@@ -420,7 +416,7 @@ if __name__ == '__main__':
 
                 # Smooth and Dissolve results
                 LP_Smooth = "in_memory" + os.sep + os.path.basename(arcpy.CreateScratchName("LP_Smooth",data_type="FeatureClass",workspace=watershedGDB_path))
-                arcpy.SmoothLine_management(LongpathTemp, LP_Smooth, "PAEK", "100 Feet", "FIXED_CLOSED_ENDPOINT", "NO_CHECK")
+                CA.SmoothLine(LongpathTemp, LP_Smooth, "PAEK", "100 Feet", "FIXED_CLOSED_ENDPOINT", "NO_CHECK")
 
                 # Intersect with watershed to get subbasin ID
                 LongpathTemp1 = "in_memory" + os.sep + os.path.basename(arcpy.CreateScratchName("LongpathTemp1",data_type="FeatureClass",workspace=watershedGDB_path))
@@ -432,7 +428,7 @@ if __name__ == '__main__':
                 # Add Fields / attributes & calculate length in feet
                 arcpy.AddField_management(Flow_Length, "Reach", "SHORT", "", "", "", "", "NULLABLE", "NON_REQUIRED")
                 objectIDfld2 = "!" + arcpy.da.Describe(Flow_Length)['OIDFieldName'] + "!"
-                arcpy.CalculateField_management(Flow_Length, "Reach", objectIDfld2", "PYTHON3")
+                arcpy.CalculateField_management(Flow_Length, "Reach", objectIDfld2, "PYTHON3")
 
                 arcpy.AddField_management(Flow_Length, "Type", "TEXT", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
                 arcpy.CalculateField_management(Flow_Length, "Type", '"Natural Watercourse"', "PYTHON3", "")
@@ -440,34 +436,24 @@ if __name__ == '__main__':
                 arcpy.AddField_management(Flow_Length, "Length_ft", "DOUBLE", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
 
                 if linearUnits == "Meters":
-                    arcpy.CalculateField_management(Flow_Length, "Length_ft", "[shape_length] * 3.28084", "PYTHON3", "")
+                    arcpy.CalculateField_management(Flow_Length, "Length_ft", "!Shape_Length! * 3.28084", "PYTHON3")
                 else:
-                    arcpy.CalculateField_management(Flow_Length, "Length_ft", "[shape_length]", "PYTHON3", "")
+                    arcpy.CalculateField_management(Flow_Length, "Length_ft", "!Shape_Length!", "PYTHON3")
 
                 # ---------------------------------------------------------------------------------------------- Set up Domains
                 # Apply domains to watershed geodatabase and Flow Length fields to aid in user editing
-                bDomainTables = True
                 ID_Table = os.path.join(os.path.dirname(sys.argv[0]), "Support.gdb" + os.sep + "ID_TABLE")
                 Reach_Table = os.path.join(os.path.dirname(sys.argv[0]), "Support.gdb" + os.sep + "REACH_TYPE")
 
                 # If support tables not present skip domains -- user is on their own.
-                if not arcpy.Exists(ID_Table):
+                if not arcpy.Exists(ID_Table) or not arcpy.Exists(Reach_Table):
                     bDomainTables = False
-
-                if not arcpy.Exists(Reach_Table):
-                    bDomainTables = False
+                else:
+                    bDomainTables = True
 
                 if bDomainTables:
-                    # describe present domains, estrablish and apply if needed
-                    desc = arcpy.describe(watershedGDB_path)
-                    listOfDomains = []
-
-                    domains = desc.Domains
-
-                    for domain in domains:
-                        listOfDomains.append(domain)
-
-                    del desc, domains
+                    # describe present domains, establish and apply if needed
+                    listOfDomains = arcpy.da.Describe(watershedGDB_path)['domains']
 
                     if not "Reach_Domain" in listOfDomains:
                         arcpy.TableToDomain_management(ID_Table, "IDENT", "ID_DESC", watershedGDB_path, "Reach_Domain", "Reach_Domain", "REPLACE")
@@ -475,103 +461,67 @@ if __name__ == '__main__':
                     if not "Type_Domain" in listOfDomains:
                         arcpy.TableToDomain_management(Reach_Table, "TYPE", "TYPE", watershedGDB_path, "Type_Domain", "Type_Domain", "REPLACE")
 
-                    del listOfDomains
-                    del ID_Table
-                    del Reach_Table
-                    del bDomainTables
-
                     # Assign domain to flow length fields for User Edits...
-                    arcpy.AssignDomainToField_management(Flow_Length, "Reach", "Reach_Domain", "")
-                    arcpy.AssignDomainToField_management(Flow_Length, "TYPE", "Type_Domain", "")
+                    arcpy.AssignDomainToField_management(Flow_Length, "Reach", "Reach_Domain")
+                    arcpy.AssignDomainToField_management(Flow_Length, "TYPE", "Type_Domain")
 
                 #---------------------------------------------------------------------- Flow Path Calculations complete
-                AddMsgAndPrint("\n\tSuccessfully extracted watershed flow path(s)",0)
+                AddMsgAndPrint("\n\tSuccessfully extracted watershed flow path(s)")
 
             except:
                 # If Calc LHL fails prompt user to delineate manually and continue...  ...capture error for reference
+                print_exception()
                 AddMsgAndPrint("\nUnable to Calculate Flow Path(s) .. You will have to trace your stream network to create them manually.."+ arcpy.GetMessages(2),2)
                 AddMsgAndPrint("\nContinuing....",1)
 
         # ----------------------------------------------------------------------------------------------- Calculate Average Slope
-        calcAvgSlope = False
+        bCalcAvgSlope = False
 
         # ----------------------------- Retrieve Z Units from AOI
         if arcpy.Exists(projectAOI):
 
-            rows = arcpy.searchcursor(projectAOI)
-            row = rows.next()
-            zUnits = row.Z_UNITS
+            # Assign Z-factor based on XY and Z units of DEM
+            # the following represents a matrix of possible z-Factors
+            # using different combination of xy and z units
+            # ----------------------------------------------------
+            #                      Z - Units
+            #                       Meter    Foot     Centimeter     Inch
+            #          Meter         1	    0.3048	    0.01	    0.0254
+            #  XY      Foot        3.28084	  1	      0.0328084	    0.083333
+            # Units    Centimeter   100	    30.48	     1	         2.54
+            #          Inch        39.3701	  12       0.393701	      1
+            # ---------------------------------------------------
 
-            del rows
-            del row
+            unitLookUpDict = {'Meter':0,'Meters':0,'Foot':1,'Foot_US':1,'Feet':1,'Centimeter':2,'Centimeters':2,'Inch':3,'Inches':3}
+            zFactorList = [[1,0.3048,0.01,0.0254],
+                           [3.28084,1,0.0328084,0.083333],
+                           [100,30.48,1.0,2.54],
+                           [39.3701,12,0.393701,1.0]]
 
-            # Assign proper Z factor
-            if zUnits == "Meters":
+            zUnits = [row[0] for row in arcpy.da.SearchCursor(projectAOI, 'Z_UNITS')][0]
+            zFactor = zFactorList[unitLookUpDict.get(zUnits)][unitLookUpDict.get(linearUnits)]
 
-                if units == "Feet":
-                    Zfactor = 3.28084
-                if units == "Meters":
-                    Zfactor = 1
-
-            elif zUnits == "Feet":
-
-                if units == "Feet":
-                    Zfactor = 1
-                if units == "Meters":
-                    Zfactor = 0.3048
-
-            elif zUnits == "Centimeters":
-
-                if units == "Feet":
-                    Zfactor = 30.48
-                if units == "Meters":
-                    Zfactor = 0.01
-
-            # zUnits must be inches; no more choices
-            else:
-
-                if units == "Feet":
-                    Zfactor = 12
-                if units == "Meters":
-                    Zfactor = 39.3701
         else:
-            Zfactor = 0 # trapped for below so if Project AOI not present slope isnt calculated
+            zFactor  = 0 # trapped for below so if Project AOI not present slope isnt calculated
 
         # --------------------------------------------------------------------------------------------------------
-        if Zfactor > 0:
-            AddMsgAndPrint("\nCalculating average slope...",1)
+        if zFactor  > 0:
+            AddMsgAndPrint("\nCalculating average slope...")
 
-            if arcpy.Exists(DEMsmooth):
+            arcpy.env.mask = watershed
+            #slopeGrid = "in_memory" + os.sep + os.path.basename(arcpy.CreateScratchName("slopeGrid",data_type="RasterDataset",workspace=watershedGDB_path))
+            #slopeStats = "in_memory" + os.sep + os.path.basename(arcpy.CreateScratchName("slopeStats",data_type="ArcInfoTable",workspace=watershedGDB_path))
 
-                # Use smoothed DEM to calculate slope to remove exteraneous values
-                arcpy.AddField_management(watershed, "Avg_Slope", "DOUBLE", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
-
-                arcpy.ExtractByMask_sa(DEMsmooth, watershed, wtshdDEMsmooth)
-                arcpy.Slope_sa(wtshdDEMsmooth, slopeGrid, "PERCENT_RISE", Zfactor)
-                arcpy.ZonalStatisticsAsTable_sa(watershed, "Subbasin", slopeGrid, slopeStats, "DATA")
-                calcAvgSlope = True
-
-                # Delete unwanted rasters
-                arcpy.Delete_management(DEMsmooth)
-                arcpy.Delete_management(wtshdDEMsmooth)
-                arcpy.Delete_management(slopeGrid)
-
-            elif arcpy.Exists(DEM_aoi):
+            if arcpy.Exists(DEM_aoi):
 
                 # Run Focal Statistics on the DEM_aoi to remove exteraneous values
-                arcpy.focalstatistics_sa(DEM_aoi, DEMsmooth,"RECTANGLE 3 3 CELL","MEAN","DATA")
+                outFocalStats = FocalStatistics(DEM_aoi, "RECTANGLE 3 3 CELL","MEAN","DATA")
 
-                arcpy.AddField_management(watershed, "Avg_Slope", "DOUBLE", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
+                arcpy.AddField_management(watershed, "Avg_Slope", "DOUBLE", "", "", "", "", "NULLABLE", "NON_REQUIRED")
 
-                arcpy.ExtractByMask_sa(DEMsmooth, watershed, wtshdDEMsmooth)
-                arcpy.Slope_sa(wtshdDEMsmooth, slopeGrid, "PERCENT_RISE", Zfactor)
-                arcpy.ZonalStatisticsAsTable_sa(watershed, "Subbasin", slopeGrid, slopeStats, "DATA")
-                calcAvgSlope = True
-
-                # Delete unwanted rasters
-                arcpy.Delete_management(DEMsmooth)
-                arcpy.Delete_management(wtshdDEMsmooth)
-                arcpy.Delete_management(slopeGrid)
+                slopeGrid = Slope(outFocalStats, "PERCENT_RISE", zFactor)
+                ZonalStatisticsAsTable(watershed, "Subbasin", slopeGrid, slopeStats, "DATA")
+                bCalcAvgSlope = True
 
             else:
                 AddMsgAndPrint("\nMissing DEMsmooth or DEM_aoi from FGDB. Could not Calculate Average Slope",2)
@@ -580,64 +530,31 @@ if __name__ == '__main__':
             AddMsgAndPrint("\nMissing Project AOI from FGDB. Could not retrieve Z Factor to Calculate Average Slope",2)
 
         # -------------------------------------------------------------------------------------- Update Watershed FC with Average Slope
-        if calcAvgSlope:
+        if bCalcAvgSlope:
 
-            # go through each zonal Stat record and pull out the Mean value
-            rows = arcpy.searchcursor(slopeStats)
-            row = rows.next()
-
-            AddMsgAndPrint("\n\tSuccessfully Calculated Average Slope",0)
+            AddMsgAndPrint("\n\tSuccessfully Calculated Average Slope")
 
             AddMsgAndPrint("\nCreate Watershed Results:",1)
-            AddMsgAndPrint("\n===================================================",0)
+            AddMsgAndPrint("\n===================================================")
             AddMsgAndPrint("\tUser Watershed: " + str(watershedOut),0)
 
-            while row:
-                wtshdID = row.OBJECTID
-
-                # zonal stats doesnt generate "Value" with the 9.3 geoprocessor
-                if len(arcpy.ListFields(slopeStats,"Value")) > 0:
-                    zonalValue = row.VALUE
-
-                else:
-                    zonalValue = row.SUBBASIN
-
-                zonalMeanValue = row.MEAN
-
-                whereclause = "Subbasin = " + str(zonalValue)
-                wtshdRows = arcpy.UpdateCursor(watershed,whereclause)
-                wtshdRow = wtshdRows.next()
-
-                # Pass the Mean value from the zonalStat table to the watershed FC.
-                while wtshdRow:
-
-                    wtshdRow.Avg_Slope = zonalMeanValue
-                    wtshdRows.UpdateRow(wtshdRow)
+            with arcpy.da.UpdateCursor(watershed,['Subbasin','Avg_Slope','Acres','SHAPE@AREA']) as cursor:
+                for row in cursor:
+                    subBasinNumber = row[0]
+                    expression = (u'{} = ' + str(subBasinNumber)).format(arcpy.AddFieldDelimiters(slopeStats, "Subbasin"))
+                    avgSlope = [row[0] for row in arcpy.da.SearchCursor(slopeStats,["MEAN"],where_clause=expression)][0]
+                    row[1] = avgSlope
+                    cursor.updateRow(row)
 
                     # Inform the user of Watershed Acres, area and avg. slope
-                    AddMsgAndPrint("\n\tSubbasin: " + str(wtshdRow.OBJECTID),0)
-                    AddMsgAndPrint("\t\tAcres: " + str(splitThousands(round(wtshdRow.Acres,2))),0)
-                    AddMsgAndPrint("\t\tArea: " + str(splitThousands(round(wtshdRow.Shape_Area,2))) + " Sq. " + units,0)
-                    AddMsgAndPrint("\t\tAvg. Slope: " + str(round(zonalMeanValue,2)),0)
+                    AddMsgAndPrint("\n\tSubbasin: " + str(subBasinNumber))
+                    AddMsgAndPrint("\t\tAcres: " + str(splitThousands(round(row[2],2))))
+                    AddMsgAndPrint("\t\tArea: " + str(splitThousands(round(row[3],2))) + " Sq. " + linearUnits)
+                    AddMsgAndPrint("\t\tAvg. Slope: " + str(round(avgSlope,2)))
 
-                    break
+            AddMsgAndPrint("\n===================================================")
 
-                row = rows.next()
-
-                del wtshdID
-                del zonalValue
-                del zonalMeanValue
-                del whereclause
-                del wtshdRows
-                del wtshdRow
-
-            del rows
-            del row
-            AddMsgAndPrint("\n===================================================",0)
-            arcpy.Delete_management(slopeStats)
-
-        import time
-        time.sleep(5)
+        time.sleep(3)
 
         # ------------------------------------------------------------------------------------------------ Compact FGDB
         try:
@@ -655,23 +572,8 @@ if __name__ == '__main__':
             arcpy.SetParameterAsText(6, Flow_Length)
             del Flow_Length
 
-        AddMsgAndPrint("\nAdding Layers to ArcMap",1)
-        AddMsgAndPrint("\n",1)
-
-        arcpy.RefreshCatalog(watershedGDB_path)
-
-        # Restore original environments
-        arcpy.extent = tempExtent
-        arcpy.mask = tempMask
-        arcpy.SnapRaster = tempSnapRaster
-        arcpy.CellSize = tempCellSize
-        arcpy.OutputCoordinateSystem = tempCoordSys
-
-    except SystemExit:
-        pass
-
-    except KeyboardInterrupt:
-        AddMsgAndPrint("Interruption requested....exiting")
+        AddMsgAndPrint("\nAdding Layers to ArcGIS Pro Session")
+        AddMsgAndPrint("\n")
 
     except:
         print_exception()

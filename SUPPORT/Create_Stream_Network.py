@@ -4,22 +4,22 @@
 # Author: Peter Mead
 # e-mail: pemead@co.becker.mn.us
 #
-# Author: Chris Morse
-#         IN State GIS Coordinator
-#         USDA - NRCS
-# e-mail: chris.morse@usda.gov
-# phone: 317.501.1578
-#
 # Author: Adolfo.Diaz
 #         GIS Specialist
 #         National Soil Survey Center
 #         USDA - NRCS
 # e-mail: adolfo.diaz@usda.gov
 # phone: 608.662.4422 ext. 216
-
+#
+# Author: Chris Morse
+#         IN State GIS Coordinator
+#         USDA - NRCS
+# e-mail: chris.morse@usda.gov
+# phone: 317.501.1578
+#
 # Created by Peter Mead, Adolfo Diaz, USDA NRCS, 2013
 # Updated by Chris Morse, USDA NRCS, 2019
-
+#
 # ==========================================================================================
 # Updated  4/20/2020 - Adolfo Diaz
 #
